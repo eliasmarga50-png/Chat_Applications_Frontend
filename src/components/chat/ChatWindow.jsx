@@ -1,7 +1,19 @@
+import { useState } from "react";
+
 import MessageItem from "./MessageItem";
 import MessageInput from "./MessageInput";
 
-function ChatWindow({ room, messages }) {
+function ChatWindow({ room, messages, onSendMessage }) {
+  const [isLoading, setIsLoading] = useState(false);
+
+  function simulateRefresh() {
+    setIsLoading(true);
+
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 600);
+  }
+
   return (
     <main className="chat-window">
       <header className="chat-header">
@@ -20,32 +32,51 @@ function ChatWindow({ room, messages }) {
             {room.members} members
           </div>
 
-          <button className="icon-button" aria-label="More options">
-            ⋯
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Simulate message loading"
+            onClick={simulateRefresh}
+          >
+            ↻
           </button>
         </div>
       </header>
 
       <div className="message-list">
-        <div className="date-divider">
-          <span>Today</span>
-        </div>
+        {isLoading ? (
+          <div className="loading-state">
+            <div className="loading-spinner"></div>
+            <p>Loading messages...</p>
+          </div>
+        ) : messages.length > 0 ? (
+          <>
+            <div className="date-divider">
+              <span>Today</span>
+            </div>
 
-        {messages.length > 0 ? (
-          messages.map((message) => (
-            <MessageItem
-              key={message.id}
-              message={message}
-            />
-          ))
+            {messages.map((message) => (
+              <MessageItem
+                key={message.id}
+                message={message}
+              />
+            ))}
+          </>
         ) : (
           <div className="empty-messages">
-            No messages in this channel yet.
+            <div className="empty-message-icon">#</div>
+
+            <h3>Welcome to #{room.name}</h3>
+
+            <p>
+              This channel is waiting for its first message.
+              Start the conversation!
+            </p>
           </div>
         )}
       </div>
 
-      <MessageInput />
+      <MessageInput onSendMessage={onSendMessage} />
     </main>
   );
 }
