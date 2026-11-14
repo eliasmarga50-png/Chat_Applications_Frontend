@@ -1,4 +1,8 @@
-function RoomList({ rooms, activeRoomId }) {
+function RoomList({
+  rooms,
+  activeRoomId,
+  onSelectRoom,
+}) {
   return (
     <section className="room-list">
       <div className="room-list-header">
@@ -7,14 +11,22 @@ function RoomList({ rooms, activeRoomId }) {
           <p>Join the conversation</p>
         </div>
 
-        <button className="add-room-button" aria-label="Add room">
+        <button
+          className="add-room-button"
+          type="button"
+          aria-label="Add room"
+        >
           +
         </button>
       </div>
 
       <div className="room-search">
         <span>⌕</span>
-        <input type="text" placeholder="Find a channel..." />
+        <input
+          type="text"
+          placeholder="Find a channel..."
+          aria-label="Find a channel"
+        />
       </div>
 
       <div className="room-category">
@@ -24,25 +36,30 @@ function RoomList({ rooms, activeRoomId }) {
 
       <div className="rooms">
         {rooms.map((room) => (
-          <div
+          <button
             key={room.id}
+            type="button"
             className={`room-item ${
               room.id === activeRoomId ? "selected" : ""
             }`}
+            onClick={() => onSelectRoom(room.id)}
           >
             <div className="room-icon">{room.icon}</div>
 
             <div className="room-info">
               <span className="room-name">#{room.name}</span>
+
               <span className="room-description">
                 {room.description}
               </span>
             </div>
 
             {room.unread > 0 && (
-              <span className="unread-count">{room.unread}</span>
+              <span className="unread-count">
+                {room.unread}
+              </span>
             )}
-          </div>
+          </button>
         ))}
       </div>
 
