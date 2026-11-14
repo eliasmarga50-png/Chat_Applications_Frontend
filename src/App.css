@@ -698,3 +698,152 @@
     font-size: 9px;
   }
 }
+
+
+/* INTERACTIVE ROOM BUTTONS */
+
+.room-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+
+/* CONTROLLED MESSAGE TEXTAREA */
+
+.message-input-box textarea {
+  min-width: 0;
+  flex: 1;
+  resize: none;
+  max-height: 120px;
+  padding: 12px 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e5e7eb;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.message-input-box textarea::placeholder {
+  color: #778398;
+}
+
+/* CHARACTER COUNTER */
+
+.character-warning {
+  color: #f0a45d;
+}
+
+/* VALIDATION ERROR */
+
+.message-error {
+  margin: 7px 0 0;
+  color: #f08080;
+  font-size: 11px;
+}
+
+/* TYPING INDICATOR */
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 10px;
+  color: #a99fff;
+  font-size: 10px;
+}
+
+.typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8d7ff0;
+  animation: typingPulse 1s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typingPulse {
+  0%, 60%, 100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* LOADING STATE */
+
+.loading-state {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #8995a8;
+  font-size: 12px;
+}
+
+.loading-spinner {
+  width: 27px;
+  height: 27px;
+  border: 3px solid #303b4d;
+  border-top-color: #8d7ff0;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* EMPTY MESSAGE STATE */
+
+.empty-messages {
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 25px;
+  text-align: center;
+}
+
+.empty-message-icon {
+  width: 43px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #252844;
+  color: #a99fff;
+  font-size: 25px;
+}
+
+.empty-messages h3 {
+  margin: 14px 0 6px;
+  color: #e5e7eb;
+  font-size: 15px;
+}
+
+.empty-messages p {
+  max-width: 300px;
+  color: #8995a8;
+  font-size: 11px;
+  line-height: 1.6;
+}
