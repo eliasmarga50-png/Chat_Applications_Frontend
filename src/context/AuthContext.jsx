@@ -1,16 +1,20 @@
 import {
-  createContext,
-  useContext,
   useEffect,
   useState,
 } from "react";
+
+import { AuthContext } from "./auth-context";
 
 import {
   loginUser,
   registerUser,
 } from "../services/authService";
 
-const AuthContext = createContext(null);
+function clearStoredSession() {
+  sessionStorage.removeItem("token");
+  sessionStorage.removeItem("user");
+  sessionStorage.removeItem("expiresAt");
+}
 
 function getStoredSession() {
   const token = sessionStorage.getItem("token");
@@ -21,9 +25,8 @@ function getStoredSession() {
     return null;
   }
 
-  // Do not restore an already expired session.
   if (Date.now() >= expiresAt) {
-    sessionStorage.clear();
+    clearStoredSession();
     return null;
   }
 
@@ -34,7 +37,7 @@ function getStoredSession() {
       expiresAt,
     };
   } catch {
-    sessionStorage.clear();
+    clearStoredSession();
     return null;
   }
 }
@@ -88,25 +91,20 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem("user");
-    sessionStorage.removeItem("expiresAt");
-
+    clearStoredSession();
     setSession(null);
   }
 
-  // Automatically end the local session when its expiry time arrives.
+  // Synchronize the session with its expiration timer.
   useEffect(() => {
     if (!session) return;
 
     const remainingTime = session.expiresAt - Date.now();
 
-    if (remainingTime <= 0) {
-      logout();
-      return;
-    }
-
-    const timer = setTimeout(logout, remainingTime);
+    const timer = setTimeout(() => {
+      clearStoredSession();
+      setSession(null);
+    }, Math.max(remainingTime, 0));
 
     return () => clearTimeout(timer);
   }, [session]);
@@ -126,16 +124,4 @@ export function AuthProvider({ children }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-
-  if (!context) {
-    throw new Error(
-      "useAuth must be used inside an AuthProvider."
-    );
-  }
-
-  return context;
 }
