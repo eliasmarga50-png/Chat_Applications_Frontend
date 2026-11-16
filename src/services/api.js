@@ -8,24 +8,38 @@ export async function apiRequest(endpoint, options = {}) {
   const token = sessionStorage.getItem("token");
 
   const headers = {
-    "Content-Type": "application/json",
+    Accept: "application/json",
     ...options.headers,
   };
 
-  // Attach the JWT when a session exists.
+  if (options.body && typeof options.body === "string") {
+    headers["Content-Type"] ??= "application/json";
+  }
+
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  const response = await fetch(
+    `${API_BASE_URL}${endpoint}`,
+    {
+      ...options,
+      headers,
+    }
+  );
 
-  // Convert the response body from JSON into a JavaScript object.
   const data = await response.json().catch(() => null);
 
-  // fetch() does not reject just because the server returned 400 or 401.
+  // A 401 from a protected endpoint means the current
+  // authentication session can no longer be trusted.
+  // Do not treat failed login credentials as an expired session.
+  if (
+    response.status === 401 &&
+    !endpoint.startsWith("/api/auth/")
+  ) {
+    window.dispatchEvent(new Event("auth:unauthorized"));
+  }
+
   if (!response.ok) {
     const error = new Error(
       data?.error?.message || "Something went wrong."
