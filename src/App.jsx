@@ -5,6 +5,10 @@ import Sidebar from "./components/layout/Sidebar";
 
 import RoomList from "./components/chat/RoomList";
 import ChatWindow from "./components/chat/ChatWindow";
+import { useAuth } from "./context/useAuth";
+
+import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 import {
   rooms,
@@ -15,6 +19,9 @@ import {
 import "./App.css";
 
 function App() {
+  const { user, isAuthenticated, logout } = useAuth();
+
+  const [authPage, setAuthPage] = useState("login");
   // Currently selected room
   const [activeRoomId, setActiveRoomId] = useState(initialRoomId);
 
@@ -61,8 +68,31 @@ function App() {
     }));
   }
 
+  if (!isAuthenticated) {
+  return authPage === "login" ? (
+    <Login
+      onSwitchToRegister={() => setAuthPage("register")}
+    />
+  ) : (
+    <Register
+      onSwitchToLogin={() => setAuthPage("login")}
+    />
+  );
+}
+
   return (
+
+    
     <div className="app">
+      <div className="session-bar">
+  <span>
+    Signed in as <strong>{user.username}</strong>
+  </span>
+
+  <button type="button" onClick={logout}>
+    Log out
+  </button>
+</div>
       <Navbar />
 
       <div className="app-body">
