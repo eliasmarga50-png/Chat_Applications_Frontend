@@ -46,6 +46,34 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(getStoredSession);
   const [loading, setLoading] = useState(false);
 
+  // Listen for unauthorized events at the top level of the component
+  useEffect(() => {
+    function handleUnauthorized() {
+      clearStoredSession();
+      setSession(null);
+    }
+
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+
+    return () => {
+      window.removeEventListener("auth:unauthorized", handleUnauthorized);
+    };
+  }, []);
+
+  // Synchronize the session with its expiration timer
+  useEffect(() => {
+    if (!session) return;
+
+    const remainingTime = session.expiresAt - Date.now();
+
+    const timer = setTimeout(() => {
+      clearStoredSession();
+      setSession(null);
+    }, Math.max(remainingTime, 0));
+
+    return () => clearTimeout(timer);
+  }, [session]);
+
   function saveSession(data) {
     const expiresIn = Number(data.expiresIn);
 
@@ -94,20 +122,6 @@ export function AuthProvider({ children }) {
     clearStoredSession();
     setSession(null);
   }
-
-  // Synchronize the session with its expiration timer.
-  useEffect(() => {
-    if (!session) return;
-
-    const remainingTime = session.expiresAt - Date.now();
-
-    const timer = setTimeout(() => {
-      clearStoredSession();
-      setSession(null);
-    }, Math.max(remainingTime, 0));
-
-    return () => clearTimeout(timer);
-  }, [session]);
 
   const value = {
     user: session?.user ?? null,
