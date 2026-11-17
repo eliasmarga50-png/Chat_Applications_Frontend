@@ -1,6 +1,8 @@
+import { Link } from "react-router-dom";
+
 import LoginForm from "../components/auth/LoginForm";
 
-function Login({ onSwitchToRegister }) {
+function Login() {
   return (
     <main className="auth-page">
       <div className="auth-card">
@@ -9,7 +11,12 @@ function Login({ onSwitchToRegister }) {
           <p>Connect. Collaborate. Build.</p>
         </div>
 
-        <LoginForm onSwitchToRegister={onSwitchToRegister} />
+        <LoginForm />
+
+        <p className="auth-switch">
+          Don't have an account?{" "}
+          <Link to="/register">Register</Link>
+        </p>
       </div>
     </main>
   );
