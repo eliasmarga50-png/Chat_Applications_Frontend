@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { useAuth } from "../../context/useAuth";
+import { useNavigate } from "react-router-dom";
 
 import {
   validateRegistration,
@@ -8,6 +9,7 @@ import {
 
 function RegisterForm({ onSwitchToLogin }) {
   const { register, loading } = useAuth();
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     username: "",
@@ -54,19 +56,18 @@ function RegisterForm({ onSwitchToLogin }) {
 
     setErrors({});
 
-    try {
-      await register({
-        username: formData.username.trim(),
-        email: formData.email.trim(),
-        displayName: formData.displayName.trim(),
-        password: formData.password,
-      });
+   try {
+  await register({
+    username: formData.username.trim(),
+    email: formData.email.trim(),
+    displayName: formData.displayName.trim(),
+    password: formData.password,
+  });
 
-      // AuthContext stores the JWT and user session.
-      // Navigation will be implemented in Step 4.
-    } catch (error) {
-      setServerError(error.message);
-    }
+  navigate("/chat", { replace: true });
+} catch (error) {
+  setServerError(error.message);
+}
   }
 
   return (
