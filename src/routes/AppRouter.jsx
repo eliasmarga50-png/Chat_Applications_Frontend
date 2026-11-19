@@ -29,20 +29,20 @@ function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Root route */}
+        {/* Home */}
         <Route path="/" element={<HomeRedirect />} />
 
-        {/* Public routes */}
+        {/* Public pages */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
-        {/* Protected routes */}
+        {/* Protected pages */}
         <Route element={<ProtectedRoute />}>
           <Route path="/chat" element={<Chat />} />
           <Route path="/chat/:slug" element={<Chat />} />
         </Route>
 
-        {/* Unknown routes */}
+        {/* Catch unknown URLs */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
