@@ -12,10 +12,15 @@ export async function apiRequest(endpoint, options = {}) {
     ...options.headers,
   };
 
-  if (options.body && typeof options.body === "string") {
+  // JSON requests should have a content type.
+  if (
+    options.body &&
+    typeof options.body === "string"
+  ) {
     headers["Content-Type"] ??= "application/json";
   }
 
+  // Attach JWT if the user is authenticated.
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -28,21 +33,24 @@ export async function apiRequest(endpoint, options = {}) {
     }
   );
 
+  // Safely parse the response.
   const data = await response.json().catch(() => null);
 
-  // A 401 from a protected endpoint means the current
-  // authentication session can no longer be trusted.
-  // Do not treat failed login credentials as an expired session.
+  // Handle expired/invalid authentication.
   if (
     response.status === 401 &&
     !endpoint.startsWith("/api/auth/")
   ) {
-    window.dispatchEvent(new Event("auth:unauthorized"));
+    window.dispatchEvent(
+      new Event("auth:unauthorized")
+    );
   }
 
+  // Handle HTTP errors.
   if (!response.ok) {
     const error = new Error(
-      data?.error?.message || "Something went wrong."
+      data?.error?.message ||
+        "Something went wrong."
     );
 
     error.status = response.status;
