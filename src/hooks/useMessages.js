@@ -9,28 +9,35 @@ import { getRoomMessages } from "../services/messageService";
 
 const PAGE_SIZE = 20;
 
-// Convert backend message data into the format
-// used by the existing frontend components.
+function formatTime(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function normalizeMessage(message, currentUsername) {
   const sender =
-    typeof message.sender === "object"
+    message.sender && typeof message.sender === "object"
       ? message.sender
-      : null;
+      : {};
 
-  const username =
-    sender?.username ||
-    message.username ||
-    "unknown";
-
-  const displayName =
-    sender?.displayName ||
-    message.displayName ||
-    username;
+  const username = sender.username || "unknown";
+  const displayName = sender.displayName || username;
 
   const createdAt =
-    message.createdAt ||
-    message.time ||
-    new Date().toISOString();
+    message.createdAt || message.updatedAt || null;
+
+  const content =
+    message.content || message.codeSnippet?.code || "";
 
   return {
     ...message,
@@ -40,48 +47,43 @@ function normalizeMessage(message, currentUsername) {
     username,
     displayName,
 
-    initials: displayName
-      .split(" ")
-      .map((part) => part[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase(),
+    initials:
+      displayName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0].toUpperCase())
+        .join("") || "?",
 
-    content: message.content || "",
-
+    content,
     createdAt,
+    time: formatTime(createdAt),
 
-    time: new Date(createdAt).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-
-    isOwn: username === currentUsername,
+    isOwn: Boolean(
+      currentUsername &&
+        username === currentUsername
+    ),
   };
 }
 
-// Remove duplicate messages using their IDs.
-function deduplicateMessages(messages) {
+function uniqueMessages(messages) {
   const seen = new Set();
 
   return messages.filter((message) => {
-    if (seen.has(message.id)) {
-      return false;
-    }
+    if (seen.has(message.id)) return false;
 
     seen.add(message.id);
     return true;
   });
 }
 
-// Sort messages chronologically.
 function sortMessages(messages) {
   return [...messages].sort((a, b) => {
-    const dateDifference =
+    const timeDifference =
       new Date(a.createdAt) - new Date(b.createdAt);
 
-    if (dateDifference !== 0) {
-      return dateDifference;
+    if (timeDifference !== 0) {
+      return timeDifference;
     }
 
     return a.id.localeCompare(b.id);
@@ -89,161 +91,259 @@ function sortMessages(messages) {
 }
 
 export function useMessages(slug, currentUsername) {
-  const [messages, setMessages] = useState([]);
+  const [state, setState] = useState({
+    slug: null,
+    messages: [],
+    loading: false,
+    error: null,
+    hasMore: false,
+    nextCursor: null,
+    loadingOlder: false,
+    olderError: null,
+  });
 
-  const [loading, setLoading] = useState(Boolean(slug));
-  const [error, setError] = useState(null);
+  const olderControllerRef = useRef(null);
+  const initialControllerRef = useRef(null);
 
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [olderError, setOlderError] = useState(null);
+  // Fetch initial history.
+  const loadInitial = useCallback(
+    async (targetSlug, signal, updateLoading = true) => {
+      if (!targetSlug) return;
 
-  const cursorRef = useRef(null);
-  const olderRequestRef = useRef(false);
+      if (updateLoading) {
+        setState({
+          slug: targetSlug,
+          messages: [],
+          loading: true,
+          error: null,
+          hasMore: false,
+          nextCursor: null,
+          loadingOlder: false,
+          olderError: null,
+        });
+      }
 
-  const [refreshKey, setRefreshKey] = useState(0);
+      try {
+        const data = await getRoomMessages(targetSlug, {
+          limit: PAGE_SIZE,
+          signal,
+        });
 
-  const reload = useCallback(() => {
-    setRefreshKey((previous) => previous + 1);
-  }, []);
+        if (signal?.aborted) return;
 
-  // Load the initial page whenever the room changes.
+        // Backend order is newest -> oldest.
+        // UI order should be oldest -> newest.
+        const normalized = (data.messages || [])
+          .map((message) =>
+            normalizeMessage(message, currentUsername)
+          )
+          .reverse();
+
+        setState((previous) => {
+          const localMessages =
+            previous.slug === targetSlug
+              ? previous.messages.filter(
+                  (message) => message.isLocal
+                )
+              : [];
+
+          return {
+            slug: targetSlug,
+            messages: uniqueMessages([
+              ...normalized,
+              ...localMessages,
+            ]),
+            loading: false,
+            error: null,
+            hasMore: Boolean(data.hasMore),
+            nextCursor: data.nextCursor,
+            loadingOlder: false,
+            olderError: null,
+          };
+        });
+      } catch (error) {
+        if (signal?.aborted) return;
+
+        setState((previous) => ({
+          ...previous,
+          slug: targetSlug,
+          loading: false,
+          error,
+        }));
+      }
+    },
+    [currentUsername]
+  );
+
+  // Fetch history when the selected room changes.
   useEffect(() => {
-    if (!slug) {
-      setMessages([]);
-      setLoading(false);
-      setError(null);
-      setHasMore(false);
-      cursorRef.current = null;
-      return;
-    }
+    if (!slug) return;
 
     const controller = new AbortController();
 
-    async function fetchInitialMessages() {
-      setLoading(true);
-      setError(null);
-      setOlderError(null);
-      setLoadingOlder(false);
-      setHasMore(false);
-      cursorRef.current = null;
-      olderRequestRef.current = false;
+    initialControllerRef.current = controller;
 
-      try {
-        const data = await getRoomMessages(slug, {
-          limit: PAGE_SIZE,
-          signal: controller.signal,
-        });
-
-        const normalizedMessages = (
-          data.messages || []
-        ).map((message) =>
-          normalizeMessage(message, currentUsername)
-        );
-
-        setMessages(
-          sortMessages(
-            deduplicateMessages(normalizedMessages)
-          )
-        );
-
-        setHasMore(Boolean(data.hasMore));
-        cursorRef.current = data.nextCursor || null;
-      } catch (err) {
-        if (err.name === "AbortError") return;
-
-        setMessages([]);
-        setError(err);
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    fetchInitialMessages();
+    loadInitial(slug, controller.signal, false);
 
     return () => {
       controller.abort();
-    };
-  }, [slug, currentUsername, refreshKey]);
 
-  // Fetch the next older page.
+      initialControllerRef.current?.abort();
+      initialControllerRef.current = null;
+
+      olderControllerRef.current?.abort();
+      olderControllerRef.current = null;
+    };
+  }, [slug, loadInitial]);
+
+  // Retry the initial history request.
+  const reload = useCallback(() => {
+    if (!slug) return;
+
+    initialControllerRef.current?.abort();
+    olderControllerRef.current?.abort();
+
+    const controller = new AbortController();
+
+    initialControllerRef.current = controller;
+
+    loadInitial(slug, controller.signal);
+  }, [slug, loadInitial]);
+
+  // Fetch the next older page using the backend cursor.
   const loadOlder = useCallback(async () => {
     if (
       !slug ||
-      loading ||
-      loadingOlder ||
-      olderRequestRef.current ||
-      !hasMore ||
-      !cursorRef.current
+      state.slug !== slug ||
+      !state.hasMore ||
+      !state.nextCursor ||
+      state.loadingOlder
     ) {
-      return;
+      return false;
     }
 
-    olderRequestRef.current = true;
-    setLoadingOlder(true);
-    setOlderError(null);
+    olderControllerRef.current?.abort();
 
-    const cursor = cursorRef.current;
+    const controller = new AbortController();
+
+    olderControllerRef.current = controller;
+
+    setState((previous) => ({
+      ...previous,
+      loadingOlder: true,
+      olderError: null,
+    }));
 
     try {
       const data = await getRoomMessages(slug, {
         limit: PAGE_SIZE,
-        before: cursor.createdAt,
-        beforeId: cursor._id,
+        before: state.nextCursor.createdAt,
+        beforeId: state.nextCursor._id,
+        signal: controller.signal,
       });
 
-      const olderMessages = (data.messages || []).map(
-        (message) =>
+      if (controller.signal.aborted) {
+        return false;
+      }
+
+      const olderMessages = (data.messages || [])
+        .map((message) =>
           normalizeMessage(message, currentUsername)
-      );
-
-      setMessages((previousMessages) =>
-        sortMessages(
-          deduplicateMessages([
-            ...previousMessages,
-            ...olderMessages,
-          ])
         )
-      );
+        .reverse();
 
-      cursorRef.current = data.nextCursor || null;
-      setHasMore(Boolean(data.hasMore));
-    } catch (err) {
-      setOlderError(err);
-    } finally {
-      olderRequestRef.current = false;
-      setLoadingOlder(false);
+      setState((previous) => {
+        if (previous.slug !== slug) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          messages: uniqueMessages([
+            ...olderMessages,
+            ...previous.messages,
+          ]),
+          hasMore: Boolean(data.hasMore),
+          nextCursor: data.nextCursor,
+          loadingOlder: false,
+          olderError: null,
+        };
+      });
+
+      return true;
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return false;
+      }
+
+      setState((previous) => ({
+        ...previous,
+        loadingOlder: false,
+        olderError: error,
+      }));
+
+      return false;
     }
   }, [
     slug,
-    loading,
-    loadingOlder,
-    hasMore,
+    state.slug,
+    state.hasMore,
+    state.nextCursor,
+    state.loadingOlder,
     currentUsername,
   ]);
 
-  // Add a temporary local message.
-  // Step 6 will replace this with real Socket.IO sending.
-  const addLocalMessage = useCallback((message) => {
-    setMessages((previousMessages) =>
-      sortMessages(
-        deduplicateMessages([
-          ...previousMessages,
-          message,
-        ])
-      )
-    );
-  }, []);
+  // Temporary local sending until Step 6.
+  const addLocalMessage = useCallback(
+    (message) => {
+      setState((previous) => {
+        if (previous.slug !== slug) {
+          return {
+            slug,
+            messages: [message],
+            loading: true,
+            error: null,
+            hasMore: false,
+            nextCursor: null,
+            loadingOlder: false,
+            olderError: null,
+          };
+        }
+
+        return {
+          ...previous,
+          messages: [
+            ...previous.messages,
+            message,
+          ],
+        };
+      });
+    },
+    [slug]
+  );
+
+  // Prevent displaying previous room's messages.
+  if (state.slug !== slug) {
+    return {
+      messages: [],
+      loading: Boolean(slug),
+      error: null,
+      hasMore: false,
+      loadingOlder: false,
+      olderError: null,
+      reload,
+      loadOlder,
+      addLocalMessage,
+    };
+  }
 
   return {
-    messages,
-    loading,
-    error,
-    hasMore,
-    loadingOlder,
-    olderError,
+    messages: state.messages,
+    loading: state.loading,
+    error: state.error,
+    hasMore: state.hasMore,
+    loadingOlder: state.loadingOlder,
+    olderError: state.olderError,
     reload,
     loadOlder,
     addLocalMessage,
