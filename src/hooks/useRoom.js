@@ -1,10 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getRoom } from "../services/roomService";
 import { normalizeRoom } from "../utils/roomAdapter";
 
@@ -23,18 +18,16 @@ function useRoom(slug) {
       if (!targetSlug) return;
 
       if (updateLoading) {
-        setState({
+        setState((previous) => ({
+          ...previous,
           slug: targetSlug,
-          room: null,
           loading: true,
           error: null,
-        });
+        }));
       }
 
       try {
-        const data = await getRoom(targetSlug, {
-          signal,
-        });
+        const data = await getRoom(targetSlug, { signal });
 
         if (signal?.aborted) return;
 
@@ -62,13 +55,17 @@ function useRoom(slug) {
     if (!slug) return;
 
     const controller = new AbortController();
-
     requestControllerRef.current = controller;
 
-    loadRoom(slug, controller.signal, false);
+    // Schedule the request after the effect finishes.
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) {
+        loadRoom(slug, controller.signal, false);
+      }
+    });
 
     return () => {
-      requestControllerRef.current?.abort();
+      controller.abort();
       requestControllerRef.current = null;
     };
   }, [slug, loadRoom]);
@@ -79,13 +76,11 @@ function useRoom(slug) {
     requestControllerRef.current?.abort();
 
     const controller = new AbortController();
-
     requestControllerRef.current = controller;
 
     loadRoom(slug, controller.signal);
   }, [slug, loadRoom]);
 
-  // Avoid showing the previous room while a new room is loading.
   if (state.slug !== slug) {
     return {
       room: null,
