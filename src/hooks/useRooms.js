@@ -1,54 +1,77 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { getRooms } from "../services/roomService";
 import { normalizeRoom } from "../utils/roomAdapter";
 
-export function useRooms() {
-  const [rooms, setRooms] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+function useRooms() {
+  const [state, setState] = useState({
+    rooms: [],
+    loading: true,
+    error: null,
+  });
 
-  const retry = useCallback(() => {
-    setRefreshKey((previous) => previous + 1);
-  }, []);
+  const requestControllerRef = useRef(null);
+
+  const loadRooms = useCallback(
+    async (signal, updateLoading = true) => {
+      if (updateLoading) {
+        setState((previous) => ({
+          ...previous,
+          loading: true,
+          error: null,
+        }));
+      }
+
+      try {
+        const data = await getRooms({ signal });
+
+        if (signal?.aborted) return;
+
+        setState({
+          rooms: data.map(normalizeRoom),
+          loading: false,
+          error: null,
+        });
+      } catch (error) {
+        if (signal?.aborted) return;
+
+        setState((previous) => ({
+          ...previous,
+          loading: false,
+          error,
+        }));
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const controller = new AbortController();
 
-    async function fetchRooms() {
-      setLoading(true);
-      setError(null);
+    requestControllerRef.current = controller;
 
-      try {
-        const data = await getRooms({
-          signal: controller.signal,
-        });
-
-        const normalizedRooms = data.map(normalizeRoom);
-
-        setRooms(normalizedRooms);
-      } catch (err) {
-        if (err.name === "AbortError") return;
-
-        setError(err);
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    fetchRooms();
+    loadRooms(controller.signal, false);
 
     return () => {
       controller.abort();
+      requestControllerRef.current = null;
     };
-  }, [refreshKey]);
+  }, [loadRooms]);
+
+  const retry = useCallback(() => {
+    requestControllerRef.current?.abort();
+
+    const controller = new AbortController();
+
+    requestControllerRef.current = controller;
+
+    loadRooms(controller.signal);
+  }, [loadRooms]);
 
   return {
-    rooms,
-    loading,
-    error,
+    ...state,
     retry,
   };
 }
+
+export { useRooms };
