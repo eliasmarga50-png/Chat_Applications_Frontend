@@ -1068,3 +1068,139 @@
   color: white;
   text-decoration: none;
 }
+
+
+/* API LOADING AND ERROR STATES */
+
+.room-list-status {
+  padding: 12px 8px;
+  color: #8794a8;
+  font-size: 11px;
+}
+
+.room-list-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.room-list-error button,
+.api-error-state button,
+.api-inline-error button,
+.older-messages-control button {
+  border: 1px solid #38465b;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #222d3d;
+  color: #c9d5e5;
+  cursor: pointer;
+}
+
+.room-list-error button:hover,
+.api-error-state button:hover,
+.api-inline-error button:hover,
+.older-messages-control button:hover {
+  background: #303d52;
+}
+
+.api-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 30px 15px;
+  color: #d4dbe6;
+  text-align: center;
+}
+
+.api-error-state h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.api-error-state p {
+  color: #98a5b8;
+  font-size: 12px;
+}
+
+.api-inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 15px;
+  background: #35252c;
+  color: #e7b6c0;
+  font-size: 11px;
+}
+
+.older-messages-control {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.older-messages-control button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* MESSAGE LOCAL STATUS */
+
+.message-local-label {
+  padding: 2px 6px;
+  border: 1px solid #6459a7;
+  border-radius: 4px;
+  color: #aaa0f3;
+  font-size: 9px;
+}
+
+/* ROOM TAGS */
+
+.room-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0 24px;
+}
+
+.room-tags span {
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: #202b3c;
+  color: #9eb7d5;
+  font-size: 9px;
+}
+
+/* CODE MESSAGE */
+
+.message-code-snippet {
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid #303b4d;
+  border-radius: 8px;
+  background: #111923;
+}
+
+.message-code-language {
+  padding: 8px 12px;
+  border-bottom: 1px solid #303b4d;
+  color: #91a2b8;
+  font-size: 10px;
+}
+
+.message-code-snippet pre {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0;
+  padding: 14px;
+}
+
+.message-code-snippet code {
+  color: #c8d5e5;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+}
