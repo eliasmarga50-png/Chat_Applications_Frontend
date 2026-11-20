@@ -1,68 +1,45 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getRoomMessages } from "../services/messageService";
 
 const PAGE_SIZE = 20;
 
-function formatTime(value) {
-  if (!value) return "";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toLocaleTimeString([], {
+function formatTime(date) {
+  return new Date(date).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
 function normalizeMessage(message, currentUsername) {
-  const sender =
-    message.sender && typeof message.sender === "object"
-      ? message.sender
-      : {};
-
-  const username = sender.username || "unknown";
-  const displayName = sender.displayName || username;
-
-  const createdAt =
-    message.createdAt || message.updatedAt || null;
+  const sender = message.sender || {};
 
   const content =
-    message.content || message.codeSnippet?.code || "";
+    message.type === "code"
+      ? message.codeSnippet?.code || message.content || ""
+      : message.content || "";
+
+  const username = sender.username || "Unknown";
+
+  const displayName = sender.displayName || username;
+
+  const initials = displayName
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return {
     ...message,
-
-    id: String(message._id ?? message.id),
-
+    id: String(message._id || message.id),
     username,
     displayName,
-
-    initials:
-      displayName
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0].toUpperCase())
-        .join("") || "?",
-
+    initials,
     content,
-    createdAt,
-    time: formatTime(createdAt),
-
-    isOwn: Boolean(
-      currentUsername &&
-        username === currentUsername
-    ),
+    createdAt: message.createdAt,
+    time: formatTime(message.createdAt),
+    isOwn: username === currentUsername,
   };
 }
 
@@ -70,27 +47,16 @@ function uniqueMessages(messages) {
   const seen = new Set();
 
   return messages.filter((message) => {
-    if (seen.has(message.id)) return false;
+    if (seen.has(message.id)) {
+      return false;
+    }
 
     seen.add(message.id);
     return true;
   });
 }
 
-function sortMessages(messages) {
-  return [...messages].sort((a, b) => {
-    const timeDifference =
-      new Date(a.createdAt) - new Date(b.createdAt);
-
-    if (timeDifference !== 0) {
-      return timeDifference;
-    }
-
-    return a.id.localeCompare(b.id);
-  });
-}
-
-export function useMessages(slug, currentUsername) {
+function useMessages(slug, currentUsername) {
   const [state, setState] = useState({
     slug: null,
     messages: [],
@@ -102,25 +68,24 @@ export function useMessages(slug, currentUsername) {
     olderError: null,
   });
 
-  const olderControllerRef = useRef(null);
-  const initialControllerRef = useRef(null);
+  const initialRequestRef = useRef(null);
+  const olderRequestRef = useRef(null);
 
-  // Fetch initial history.
-  const loadInitial = useCallback(
+  // Pagination guard: tracks whether an older-page request is already running.
+  const olderRequestInProgressRef = useRef(false);
+
+  // Load the initial page of messages.
+  const loadMessages = useCallback(
     async (targetSlug, signal, updateLoading = true) => {
       if (!targetSlug) return;
 
       if (updateLoading) {
-        setState({
+        setState((previous) => ({
+          ...previous,
           slug: targetSlug,
-          messages: [],
           loading: true,
           error: null,
-          hasMore: false,
-          nextCursor: null,
-          loadingOlder: false,
-          olderError: null,
-        });
+        }));
       }
 
       try {
@@ -131,36 +96,23 @@ export function useMessages(slug, currentUsername) {
 
         if (signal?.aborted) return;
 
-        // Backend order is newest -> oldest.
-        // UI order should be oldest -> newest.
-        const normalized = (data.messages || [])
-          .map((message) =>
-            normalizeMessage(message, currentUsername)
-          )
+        const normalizedMessages = data.messages
+          .map((message) => normalizeMessage(message, currentUsername))
           .reverse();
 
-        setState((previous) => {
-          const localMessages =
+        setState((previous) => ({
+          slug: targetSlug,
+          messages:
             previous.slug === targetSlug
-              ? previous.messages.filter(
-                  (message) => message.isLocal
-                )
-              : [];
-
-          return {
-            slug: targetSlug,
-            messages: uniqueMessages([
-              ...normalized,
-              ...localMessages,
-            ]),
-            loading: false,
-            error: null,
-            hasMore: Boolean(data.hasMore),
-            nextCursor: data.nextCursor,
-            loadingOlder: false,
-            olderError: null,
-          };
-        });
+              ? uniqueMessages([...previous.messages, ...normalizedMessages])
+              : normalizedMessages,
+          loading: false,
+          error: null,
+          hasMore: data.hasMore,
+          nextCursor: data.nextCursor,
+          loadingOlder: false,
+          olderError: null,
+        }));
       } catch (error) {
         if (signal?.aborted) return;
 
@@ -175,58 +127,65 @@ export function useMessages(slug, currentUsername) {
     [currentUsername]
   );
 
-  // Fetch history when the selected room changes.
+  // Fetch initial messages whenever the active room changes.
   useEffect(() => {
     if (!slug) return;
 
     const controller = new AbortController();
 
-    initialControllerRef.current = controller;
+    initialRequestRef.current = controller;
 
-    loadInitial(slug, controller.signal, false);
+    // Reset pagination lock for the new room.
+    olderRequestInProgressRef.current = false;
+
+    loadMessages(slug, controller.signal, false);
 
     return () => {
       controller.abort();
+      olderRequestRef.current?.abort();
+      olderRequestRef.current = null;
 
-      initialControllerRef.current?.abort();
-      initialControllerRef.current = null;
+      // Release the pagination guard when leaving the room.
+      olderRequestInProgressRef.current = false;
 
-      olderControllerRef.current?.abort();
-      olderControllerRef.current = null;
+      initialRequestRef.current = null;
     };
-  }, [slug, loadInitial]);
+  }, [slug, loadMessages]);
 
-  // Retry the initial history request.
-  const reload = useCallback(() => {
+  // Reload the current room's messages.
+  const reloadMessages = useCallback(() => {
     if (!slug) return;
 
-    initialControllerRef.current?.abort();
-    olderControllerRef.current?.abort();
+    initialRequestRef.current?.abort();
+    olderRequestRef.current?.abort();
+
+    olderRequestRef.current = null;
+    olderRequestInProgressRef.current = false;
 
     const controller = new AbortController();
+    initialRequestRef.current = controller;
 
-    initialControllerRef.current = controller;
+    loadMessages(slug, controller.signal);
+  }, [slug, loadMessages]);
 
-    loadInitial(slug, controller.signal);
-  }, [slug, loadInitial]);
-
-  // Fetch the next older page using the backend cursor.
+  // Load the next older page.
   const loadOlder = useCallback(async () => {
     if (
       !slug ||
-      state.slug !== slug ||
       !state.hasMore ||
       !state.nextCursor ||
-      state.loadingOlder
+      state.loading ||
+      olderRequestInProgressRef.current
     ) {
       return false;
     }
 
-    olderControllerRef.current?.abort();
+    // Lock immediately before starting the request.
+    // Repeated calls cannot start another pagination request.
+    olderRequestInProgressRef.current = true;
 
     const controller = new AbortController();
-
-    olderControllerRef.current = controller;
+    olderRequestRef.current = controller;
 
     setState((previous) => ({
       ...previous,
@@ -246,29 +205,21 @@ export function useMessages(slug, currentUsername) {
         return false;
       }
 
-      const olderMessages = (data.messages || [])
-        .map((message) =>
-          normalizeMessage(message, currentUsername)
-        )
+      const olderMessages = data.messages
+        .map((message) => normalizeMessage(message, currentUsername))
         .reverse();
 
-      setState((previous) => {
-        if (previous.slug !== slug) {
-          return previous;
-        }
-
-        return {
-          ...previous,
-          messages: uniqueMessages([
-            ...olderMessages,
-            ...previous.messages,
-          ]),
-          hasMore: Boolean(data.hasMore),
-          nextCursor: data.nextCursor,
-          loadingOlder: false,
-          olderError: null,
-        };
-      });
+      setState((previous) => ({
+        ...previous,
+        messages: uniqueMessages([
+          ...olderMessages,
+          ...previous.messages,
+        ]),
+        hasMore: data.hasMore,
+        nextCursor: data.nextCursor,
+        loadingOlder: false,
+        olderError: null,
+      }));
 
       return true;
     } catch (error) {
@@ -283,46 +234,46 @@ export function useMessages(slug, currentUsername) {
       }));
 
       return false;
+    } finally {
+      // Always release the lock when the request finishes.
+      olderRequestInProgressRef.current = false;
+
+      if (olderRequestRef.current === controller) {
+        olderRequestRef.current = null;
+      }
     }
   }, [
     slug,
-    state.slug,
     state.hasMore,
     state.nextCursor,
-    state.loadingOlder,
+    state.loading,
     currentUsername,
   ]);
 
-  // Temporary local sending until Step 6.
+  // Add a temporary message locally.
+  // Step 5 does not persist messages through the backend yet.
   const addLocalMessage = useCallback(
     (message) => {
-      setState((previous) => {
-        if (previous.slug !== slug) {
-          return {
-            slug,
-            messages: [message],
-            loading: true,
-            error: null,
-            hasMore: false,
-            nextCursor: null,
-            loadingOlder: false,
-            olderError: null,
-          };
-        }
+      const normalizedMessage = {
+        ...message,
+        id: message.id || `local-${Date.now()}`,
+        username: currentUsername,
+        displayName: message.displayName || currentUsername,
+        initials: message.initials || currentUsername?.slice(0, 2).toUpperCase(),
+        time: message.time || formatTime(message.createdAt || new Date()),
+        isOwn: true,
+        isLocal: true,
+      };
 
-        return {
-          ...previous,
-          messages: [
-            ...previous.messages,
-            message,
-          ],
-        };
-      });
+      setState((previous) => ({
+        ...previous,
+        messages: [...previous.messages, normalizedMessage],
+      }));
     },
-    [slug]
+    [currentUsername]
   );
 
-  // Prevent displaying previous room's messages.
+  // Prevent messages from the previous room appearing during navigation.
   if (state.slug !== slug) {
     return {
       messages: [],
@@ -331,7 +282,7 @@ export function useMessages(slug, currentUsername) {
       hasMore: false,
       loadingOlder: false,
       olderError: null,
-      reload,
+      reloadMessages,
       loadOlder,
       addLocalMessage,
     };
@@ -344,8 +295,10 @@ export function useMessages(slug, currentUsername) {
     hasMore: state.hasMore,
     loadingOlder: state.loadingOlder,
     olderError: state.olderError,
-    reload,
+    reloadMessages,
     loadOlder,
     addLocalMessage,
   };
 }
+
+export { useMessages };
