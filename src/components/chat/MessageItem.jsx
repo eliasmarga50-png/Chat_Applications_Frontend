@@ -23,10 +23,39 @@ function MessageItem({ message }) {
             @{message.username}
           </span>
 
-          <span className="message-time">{message.time}</span>
+          <span className="message-time">
+            {message.time}
+          </span>
+
+          {message.isLocal && (
+            <span className="message-local-label">
+              Not saved
+            </span>
+          )}
         </div>
 
-        <p className="message-text">{message.content}</p>
+        {message.content && (
+          <p className="message-text">
+            {message.content}
+          </p>
+        )}
+
+        {message.codeSnippet?.code && (
+          <div className="message-code-snippet">
+            <div className="message-code-language">
+              {message.codeSnippet.language || "code"}
+
+              {message.codeSnippet.filename &&
+                ` · ${message.codeSnippet.filename}`}
+            </div>
+
+            <pre>
+              <code>
+                {message.codeSnippet.code}
+              </code>
+            </pre>
+          </div>
+        )}
       </div>
     </article>
   );
