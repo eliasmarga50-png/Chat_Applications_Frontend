@@ -62,7 +62,11 @@ function Chat() {
   } = useMessages(slug, user?.username);
 
   // The API room details are the preferred source.
-  const activeRoom = detailedRoom;
+  const roomFromList = rooms.find(
+  (item) => item.slug === slug
+);
+
+const activeRoom = detailedRoom || roomFromList || null;
 
   // 5. Select a room using its ID, then navigate using its slug.
   const handleSelectRoom = useCallback(
