@@ -1,60 +1,106 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import { getRoom } from "../services/roomService";
 import { normalizeRoom } from "../utils/roomAdapter";
 
-export function useRoom(slug) {
-  const [room, setRoom] = useState(null);
-  const [loading, setLoading] = useState(Boolean(slug));
-  const [error, setError] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+function useRoom(slug) {
+  const [state, setState] = useState({
+    slug: null,
+    room: null,
+    loading: false,
+    error: null,
+  });
 
-  const retry = useCallback(() => {
-    setRefreshKey((previous) => previous + 1);
-  }, []);
+  const requestControllerRef = useRef(null);
+
+  const loadRoom = useCallback(
+    async (targetSlug, signal, updateLoading = true) => {
+      if (!targetSlug) return;
+
+      if (updateLoading) {
+        setState({
+          slug: targetSlug,
+          room: null,
+          loading: true,
+          error: null,
+        });
+      }
+
+      try {
+        const data = await getRoom(targetSlug, {
+          signal,
+        });
+
+        if (signal?.aborted) return;
+
+        setState({
+          slug: targetSlug,
+          room: normalizeRoom(data),
+          loading: false,
+          error: null,
+        });
+      } catch (error) {
+        if (signal?.aborted) return;
+
+        setState({
+          slug: targetSlug,
+          room: null,
+          loading: false,
+          error,
+        });
+      }
+    },
+    []
+  );
 
   useEffect(() => {
-    if (!slug) {
-      setRoom(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
+    if (!slug) return;
 
     const controller = new AbortController();
 
-    async function fetchRoom() {
-      setLoading(true);
-      setError(null);
+    requestControllerRef.current = controller;
 
-      try {
-        const data = await getRoom(slug, {
-          signal: controller.signal,
-        });
-
-        setRoom(normalizeRoom(data.room ?? data));
-      } catch (err) {
-        if (err.name === "AbortError") return;
-
-        setRoom(null);
-        setError(err);
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    fetchRoom();
+    loadRoom(slug, controller.signal, false);
 
     return () => {
-      controller.abort();
+      requestControllerRef.current?.abort();
+      requestControllerRef.current = null;
     };
-  }, [slug, refreshKey]);
+  }, [slug, loadRoom]);
+
+  const retry = useCallback(() => {
+    if (!slug) return;
+
+    requestControllerRef.current?.abort();
+
+    const controller = new AbortController();
+
+    requestControllerRef.current = controller;
+
+    loadRoom(slug, controller.signal);
+  }, [slug, loadRoom]);
+
+  // Avoid showing the previous room while a new room is loading.
+  if (state.slug !== slug) {
+    return {
+      room: null,
+      loading: Boolean(slug),
+      error: null,
+      retry,
+    };
+  }
 
   return {
-    room,
-    loading,
-    error,
+    room: state.room,
+    loading: state.loading,
+    error: state.error,
     retry,
   };
 }
+
+export { useRoom };
