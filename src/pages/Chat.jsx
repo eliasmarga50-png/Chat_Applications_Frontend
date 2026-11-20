@@ -1,19 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import Navbar from "../components/layout/Navbar";
 import Sidebar from "../components/layout/Sidebar";
-
 import RoomList from "../components/chat/RoomList";
 import ChatWindow from "../components/chat/ChatWindow";
 
 import { useAuth } from "../context/useAuth";
-
-import {
-  rooms,
-  messages,
-  activeRoomId as initialRoomId,
-} from "../data/mockData";
+import { useRooms } from "../hooks/useRooms";
+import { useRoom } from "../hooks/useRoom";
+import { useMessages } from "../hooks/useMessages";
 
 import NotFound from "./NotFound";
 
@@ -23,76 +19,96 @@ function Chat() {
   const navigate = useNavigate();
   const { slug } = useParams();
 
-  // Find the room using the URL slug
-  const activeRoom = rooms.find(
-    (room) => room.name === slug
-  );
+  // 1. Fetch public rooms.
+  const {
+    rooms,
+    loading: roomsLoading,
+    error: roomsError,
+    retry: retryRooms,
+  } = useRooms();
 
-  // Use the room's ID for the existing message system
-  const activeRoomId = activeRoom?.id;
-
-  // Messages remain separated by room
-  const [messagesByRoom, setMessagesByRoom] = useState(() => ({
-    "1": [],
-    "2": messages,
-    "3": [],
-    "4": [],
-  }));
-
-  // Redirect /chat to the default room
+  // 2. Redirect /chat to a default room.
   useEffect(() => {
-    if (!slug) {
-      const defaultRoom = rooms.find(
-        (room) => room.id === initialRoomId
+    if (!slug && !roomsLoading && rooms.length > 0) {
+      const defaultRoom =
+        rooms.find((room) => room.slug === "javascript") ||
+        rooms[0];
+
+      navigate(`/chat/${defaultRoom.slug}`, {
+        replace: true,
+      });
+    }
+  }, [slug, roomsLoading, rooms, navigate]);
+
+  // 3. Fetch room details by URL slug.
+  const {
+    room: detailedRoom,
+    loading: roomLoading,
+    error: roomError,
+    retry: retryRoom,
+  } = useRoom(slug);
+
+  // 4. Fetch message history for the selected room.
+  const {
+    messages,
+    loading: messagesLoading,
+    error: messagesError,
+    hasMore,
+    loadingOlder,
+    olderError,
+    reload: reloadMessages,
+    loadOlder,
+    addLocalMessage,
+  } = useMessages(slug, user?.username);
+
+  // The API room details are the preferred source.
+  const activeRoom = detailedRoom;
+
+  // 5. Select a room using its ID, then navigate using its slug.
+  const handleSelectRoom = useCallback(
+    (roomId) => {
+      const selectedRoom = rooms.find(
+        (item) => item.id === roomId
       );
 
-      if (defaultRoom) {
-        navigate(`/chat/${defaultRoom.name}`, {
-          replace: true,
-        });
+      if (selectedRoom) {
+        navigate(`/chat/${selectedRoom.slug}`);
       }
-    }
-  }, [slug, navigate]);
+    },
+    [rooms, navigate]
+  );
 
-  // Select a room by navigating to its URL
-  function handleSelectRoom(roomId) {
-    const selectedRoom = rooms.find(
-      (room) => room.id === roomId
-    );
-
-    if (selectedRoom) {
-      navigate(`/chat/${selectedRoom.name}`);
-    }
-  }
-
-  // Send a message to the currently selected room
+  // 6. Temporary local sending until Step 6.
   function handleSendMessage(content) {
-    if (!activeRoomId) return;
+    if (!activeRoom) return;
+
+    const displayName =
+      user?.displayName || user?.username || "You";
 
     const newMessage = {
-      id: Date.now().toString(),
-      username: "you",
-      displayName: "You",
-      initials: "YO",
+      id: `local-${Date.now()}`,
+      username: user?.username || "you",
+      displayName,
+      initials: displayName
+        .split(" ")
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase(),
       content,
+      createdAt: new Date().toISOString(),
       time: new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       }),
       isOwn: true,
+      isLocal: true,
     };
 
-    setMessagesByRoom((previousMessages) => ({
-      ...previousMessages,
-
-      [activeRoomId]: [
-        ...(previousMessages[activeRoomId] || []),
-        newMessage,
-      ],
-    }));
+    addLocalMessage(newMessage);
   }
 
-  // Log out and return to the login page
+  // 7. Logout.
   function handleLogout() {
     logout();
 
@@ -101,8 +117,8 @@ function Chat() {
     });
   }
 
-  // Unknown room slug
-  if (slug && !activeRoom) {
+  // Unknown room.
+  if (slug && roomError?.status === 404) {
     return <NotFound />;
   }
 
@@ -110,7 +126,7 @@ function Chat() {
     <div className="app">
       <div className="session-bar">
         <span>
-          Signed in as <strong>{user.username}</strong>
+          Signed in as <strong>{user?.username}</strong>
         </span>
 
         <button
@@ -128,23 +144,27 @@ function Chat() {
 
         <RoomList
           rooms={rooms}
-          activeRoomId={activeRoomId}
+          activeRoomId={activeRoom?.id}
+          loading={roomsLoading}
+          error={roomsError}
+          onRetry={retryRooms}
           onSelectRoom={handleSelectRoom}
         />
 
-        {activeRoom ? (
-          <ChatWindow
-            room={activeRoom}
-            messages={
-              messagesByRoom[activeRoomId] || []
-            }
-            onSendMessage={handleSendMessage}
-          />
-        ) : (
-          <main className="empty-chat">
-            Select a channel to start exploring.
-          </main>
-        )}
+        <ChatWindow
+          room={activeRoom}
+          messages={messages}
+          isLoading={roomLoading || messagesLoading}
+          error={messagesError}
+          olderError={olderError}
+          hasMore={hasMore}
+          loadingOlder={loadingOlder}
+          onLoadOlder={loadOlder}
+          onRetry={reloadMessages}
+          roomError={roomError}
+          onRetryRoom={retryRoom}
+          onSendMessage={handleSendMessage}
+        />
       </div>
     </div>
   );
