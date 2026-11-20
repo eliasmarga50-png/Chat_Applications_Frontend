@@ -246,7 +246,9 @@ function ChatWindow({
         )}
       </div>
 
-      <MessageInput onSendMessage={onSendMessage} />
+      {room && (
+  <MessageInput onSendMessage={onSendMessage} />
+)}
     </main>
   );
 }
