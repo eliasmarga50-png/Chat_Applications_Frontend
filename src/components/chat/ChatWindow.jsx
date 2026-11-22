@@ -1,7 +1,10 @@
+
 import { useLayoutEffect, useRef } from "react";
 
 import MessageItem from "./MessageItem";
 import MessageInput from "./MessageInput";
+import TypingIndicator from "./TypingIndicator";
+
 
 function dateLabel(value) {
   if (!value) return "Earlier";
@@ -35,6 +38,7 @@ function dateLabel(value) {
   });
 }
 
+
 function ChatWindow({
   room,
   messages,
@@ -48,11 +52,20 @@ function ChatWindow({
   roomError,
   onRetryRoom,
   onSendMessage,
+
+  connectionStatus,
+  connectionError,
+  roomJoinError,
+  joinedRoomSlug,
+  onRetryRoomJoin,
+  typingUserCount,
+  onTypingChange,
 }) {
   const messageContainerRef = useRef(null);
 
   const previousMessagesHeightRef = useRef(null);
   const previousRoomSlugRef = useRef(room?.slug);
+
 
   async function handleLoadOlder() {
     const container = messageContainerRef.current;
@@ -71,13 +84,13 @@ function ChatWindow({
     }
   }
 
-  // Maintain scroll position when older messages are prepended.
+
+  // Preserve scroll position when older messages are prepended.
   useLayoutEffect(() => {
     const container = messageContainerRef.current;
 
     if (!container) return;
 
-    // Room changed.
     if (previousRoomSlugRef.current !== room?.slug) {
       previousRoomSlugRef.current = room?.slug;
       previousMessagesHeightRef.current = null;
@@ -87,7 +100,6 @@ function ChatWindow({
     const previousMetrics =
       previousMessagesHeightRef.current;
 
-    // Older messages were loaded.
     if (previousMetrics) {
       container.scrollTop =
         previousMetrics.top +
@@ -95,12 +107,20 @@ function ChatWindow({
 
       previousMessagesHeightRef.current = null;
     } else if (!isLoading && messages.length > 0) {
-      // Initial history: scroll to the latest messages.
       container.scrollTop = container.scrollHeight;
     }
   }, [room?.slug, messages, isLoading]);
 
+
   let previousDate = null;
+
+  const isConnected = connectionStatus === "connected";
+
+  const roomReady =
+    isConnected &&
+    joinedRoomSlug === room?.slug &&
+    !roomJoinError;
+
 
   return (
     <main className="chat-window">
@@ -129,6 +149,19 @@ function ChatWindow({
         </div>
 
         <div className="chat-header-actions">
+          <span
+            className={`socket-status socket-status-${connectionStatus}`}
+            role="status"
+          >
+            <span className="socket-status-dot" />
+
+            {connectionStatus === "connected"
+              ? "Connected"
+              : connectionStatus === "connecting"
+                ? "Connecting"
+                : "Offline"}
+          </span>
+
           <button
             className="icon-button"
             type="button"
@@ -142,11 +175,37 @@ function ChatWindow({
         </div>
       </header>
 
+
+      {connectionError &&
+        connectionStatus !== "connected" && (
+          <div className="socket-notice" role="status">
+            {connectionError}
+          </div>
+        )}
+
+
+      {roomJoinError && (
+        <div
+          className="api-inline-error socket-room-error"
+          role="alert"
+        >
+          <span>
+            Couldn't join this room: {roomJoinError.message}
+          </span>
+
+          <button
+            type="button"
+            onClick={onRetryRoomJoin}
+          >
+            Retry join
+          </button>
+        </div>
+      )}
+
+
       {roomError && (
         <div className="api-inline-error" role="alert">
-          <span>
-            Room details could not be loaded.
-          </span>
+          <span>Room details could not be loaded.</span>
 
           <button
             type="button"
@@ -156,6 +215,7 @@ function ChatWindow({
           </button>
         </div>
       )}
+
 
       <div
         className="message-list"
@@ -175,6 +235,7 @@ function ChatWindow({
           </div>
         )}
 
+
         {olderError && (
           <div className="api-inline-error" role="alert">
             <span>
@@ -190,6 +251,7 @@ function ChatWindow({
             </button>
           </div>
         )}
+
 
         {isLoading ? (
           <div className="loading-state">
@@ -211,6 +273,7 @@ function ChatWindow({
         ) : messages.length > 0 ? (
           messages.map((message) => {
             const label = dateLabel(message.createdAt);
+
             const showDivider = label !== previousDate;
 
             previousDate = label;
@@ -246,11 +309,20 @@ function ChatWindow({
         )}
       </div>
 
+
+      <TypingIndicator userCount={typingUserCount} />
+
+
       {room && (
-  <MessageInput onSendMessage={onSendMessage} />
-)}
+        <MessageInput
+          onSendMessage={onSendMessage}
+          onTypingChange={onTypingChange}
+          disabled={!roomReady}
+        />
+      )}
     </main>
   );
 }
+
 
 export default ChatWindow;
