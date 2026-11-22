@@ -1,8 +1,15 @@
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import { getRoomMessages } from "../services/messageService";
 
 const PAGE_SIZE = 20;
+
 
 function formatTime(date) {
   return new Date(date).toLocaleTimeString([], {
@@ -10,6 +17,7 @@ function formatTime(date) {
     minute: "2-digit",
   });
 }
+
 
 function normalizeMessage(message, currentUsername) {
   const sender = message.sender || {};
@@ -20,7 +28,6 @@ function normalizeMessage(message, currentUsername) {
       : message.content || "";
 
   const username = sender.username || "Unknown";
-
   const displayName = sender.displayName || username;
 
   const initials = displayName
@@ -40,8 +47,10 @@ function normalizeMessage(message, currentUsername) {
     createdAt: message.createdAt,
     time: formatTime(message.createdAt),
     isOwn: username === currentUsername,
+    isLocal: false,
   };
 }
+
 
 function uniqueMessages(messages) {
   const seen = new Set();
@@ -55,6 +64,21 @@ function uniqueMessages(messages) {
     return true;
   });
 }
+
+
+function chronological(messages) {
+  return uniqueMessages(messages).sort((a, b) => {
+    const timeDifference =
+      new Date(a.createdAt) - new Date(b.createdAt);
+
+    if (timeDifference !== 0) {
+      return timeDifference;
+    }
+
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
 
 function useMessages(slug, currentUsername) {
   const [state, setState] = useState({
@@ -70,89 +94,96 @@ function useMessages(slug, currentUsername) {
 
   const initialRequestRef = useRef(null);
   const olderRequestRef = useRef(null);
-
-  // Pagination guard: tracks whether an older-page request is already running.
   const olderRequestInProgressRef = useRef(false);
 
-  // Load the initial page of messages.
-  const loadMessages = useCallback(
-    async (targetSlug, signal, updateLoading = true) => {
-      if (!targetSlug) return;
 
-      if (updateLoading) {
-        setState((previous) => ({
-          ...previous,
-          slug: targetSlug,
-          loading: true,
-          error: null,
-        }));
-      }
+  // Load the initial message page from the REST API.
+  const loadMessages = useCallback(async (
+    targetSlug,
+    signal
+  ) => {
+    if (!targetSlug) return;
 
-      try {
-        const data = await getRoomMessages(targetSlug, {
-          limit: PAGE_SIZE,
-          signal,
-        });
+    setState((previous) => ({
+      ...previous,
+      slug: targetSlug,
+      messages:
+        previous.slug === targetSlug
+          ? previous.messages
+          : [],
+      loading: true,
+      error: null,
+    }));
 
-        if (signal?.aborted) return;
+    try {
+      const data = await getRoomMessages(targetSlug, {
+        limit: PAGE_SIZE,
+        signal,
+      });
 
-        const normalizedMessages = data.messages
-          .map((message) => normalizeMessage(message, currentUsername))
-          .reverse();
+      if (signal?.aborted) return;
 
-        setState((previous) => ({
-          slug: targetSlug,
-          messages:
-            previous.slug === targetSlug
-              ? uniqueMessages([...previous.messages, ...normalizedMessages])
-              : normalizedMessages,
-          loading: false,
-          error: null,
-          hasMore: data.hasMore,
-          nextCursor: data.nextCursor,
-          loadingOlder: false,
-          olderError: null,
-        }));
-      } catch (error) {
-        if (signal?.aborted) return;
+      const fetchedMessages = data.messages
+        .map((message) =>
+          normalizeMessage(message, currentUsername)
+        )
+        .reverse();
 
-        setState((previous) => ({
-          ...previous,
-          slug: targetSlug,
-          loading: false,
-          error,
-        }));
-      }
-    },
-    [currentUsername]
-  );
+      setState((previous) => ({
+        slug: targetSlug,
 
-  // Fetch initial messages whenever the active room changes.
+        // Merge messages received through Socket.IO while
+        // the REST request was loading.
+        messages: chronological(
+          previous.slug === targetSlug
+            ? [...previous.messages, ...fetchedMessages]
+            : fetchedMessages
+        ),
+
+        loading: false,
+        error: null,
+        hasMore: data.hasMore,
+        nextCursor: data.nextCursor,
+        loadingOlder: false,
+        olderError: null,
+      }));
+    } catch (error) {
+      if (signal?.aborted) return;
+
+      setState((previous) => ({
+        ...previous,
+        slug: targetSlug,
+        loading: false,
+        error,
+      }));
+    }
+  }, [currentUsername]);
+
+
+  // Fetch initial history when the selected room changes.
   useEffect(() => {
-    if (!slug) return;
+    if (!slug) return undefined;
 
     const controller = new AbortController();
-
     initialRequestRef.current = controller;
 
-    // Reset pagination lock for the new room.
     olderRequestInProgressRef.current = false;
 
-    loadMessages(slug, controller.signal, false);
+    loadMessages(slug, controller.signal);
 
     return () => {
       controller.abort();
+
       olderRequestRef.current?.abort();
       olderRequestRef.current = null;
 
-      // Release the pagination guard when leaving the room.
       olderRequestInProgressRef.current = false;
-
       initialRequestRef.current = null;
     };
   }, [slug, loadMessages]);
 
-  // Reload the current room's messages.
+
+  // Reload current room's message history.
   const reloadMessages = useCallback(() => {
     if (!slug) return;
 
@@ -168,7 +199,8 @@ function useMessages(slug, currentUsername) {
     loadMessages(slug, controller.signal);
   }, [slug, loadMessages]);
 
-  // Load the next older page.
+
+  // Fetch the next older message page using the existing cursor.
   const loadOlder = useCallback(async () => {
     if (
       !slug ||
@@ -180,8 +212,6 @@ function useMessages(slug, currentUsername) {
       return false;
     }
 
-    // Lock immediately before starting the request.
-    // Repeated calls cannot start another pagination request.
     olderRequestInProgressRef.current = true;
 
     const controller = new AbortController();
@@ -206,12 +236,14 @@ function useMessages(slug, currentUsername) {
       }
 
       const olderMessages = data.messages
-        .map((message) => normalizeMessage(message, currentUsername))
+        .map((message) =>
+          normalizeMessage(message, currentUsername)
+        )
         .reverse();
 
       setState((previous) => ({
         ...previous,
-        messages: uniqueMessages([
+        messages: chronological([
           ...olderMessages,
           ...previous.messages,
         ]),
@@ -235,7 +267,6 @@ function useMessages(slug, currentUsername) {
 
       return false;
     } finally {
-      // Always release the lock when the request finishes.
       olderRequestInProgressRef.current = false;
 
       if (olderRequestRef.current === controller) {
@@ -250,30 +281,37 @@ function useMessages(slug, currentUsername) {
     currentUsername,
   ]);
 
-  // Add a temporary message locally.
-  // Step 5 does not persist messages through the backend yet.
-  const addLocalMessage = useCallback(
-    (message) => {
-      const normalizedMessage = {
-        ...message,
-        id: message.id || `local-${Date.now()}`,
-        username: currentUsername,
-        displayName: message.displayName || currentUsername,
-        initials: message.initials || currentUsername?.slice(0, 2).toUpperCase(),
-        time: message.time || formatTime(message.createdAt || new Date()),
-        isOwn: true,
-        isLocal: true,
-      };
 
-      setState((previous) => ({
+  // Add a message received from the Socket.IO server.
+  const addRealtimeMessage = useCallback((message) => {
+    if (!message?.room || message.room !== slug) {
+      return;
+    }
+
+    const normalizedMessage = normalizeMessage(
+      message,
+      currentUsername
+    );
+
+    setState((previous) => {
+      const existingMessages =
+        previous.slug === message.room
+          ? previous.messages
+          : [];
+
+      return {
         ...previous,
-        messages: [...previous.messages, normalizedMessage],
-      }));
-    },
-    [currentUsername]
-  );
+        slug: message.room,
+        messages: chronological([
+          ...existingMessages,
+          normalizedMessage,
+        ]),
+      };
+    });
+  }, [slug, currentUsername]);
 
-  // Prevent messages from the previous room appearing during navigation.
+
+  // Don't show messages belonging to the previous room.
   if (state.slug !== slug) {
     return {
       messages: [],
@@ -284,9 +322,10 @@ function useMessages(slug, currentUsername) {
       olderError: null,
       reloadMessages,
       loadOlder,
-      addLocalMessage,
+      addRealtimeMessage,
     };
   }
+
 
   return {
     messages: state.messages,
@@ -297,8 +336,9 @@ function useMessages(slug, currentUsername) {
     olderError: state.olderError,
     reloadMessages,
     loadOlder,
-    addLocalMessage,
+    addRealtimeMessage,
   };
 }
+
 
 export { useMessages };
