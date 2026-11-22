@@ -1,16 +1,32 @@
-import { useState } from "react";
-import TypingIndicator from "./TypingIndicator";
+
+import { useEffect, useRef, useState } from "react";
 
 const MAX_MESSAGE_LENGTH = 4000;
+const TYPING_IDLE_MS = 1500;
 
-function MessageInput({ onSendMessage }) {
+
+function MessageInput({
+  onSendMessage,
+  onTypingChange,
+  disabled = false,
+}) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const typingTimerRef = useRef(null);
 
   const remainingCharacters =
     MAX_MESSAGE_LENGTH - draft.length;
 
-  const isTyping = draft.trim().length > 0;
+
+  function stopTypingTimer() {
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  }
+
 
   function handleChange(event) {
     const value = event.target.value;
@@ -20,9 +36,23 @@ function MessageInput({ onSendMessage }) {
     if (error) {
       setError("");
     }
+
+    stopTypingTimer();
+
+    const typing = value.trim().length > 0;
+
+    onTypingChange?.(typing);
+
+    if (typing) {
+      typingTimerRef.current = setTimeout(() => {
+        onTypingChange?.(false);
+        typingTimerRef.current = null;
+      }, TYPING_IDLE_MS);
+    }
   }
 
-  function handleSubmit(event) {
+
+  async function handleSubmit(event) {
     event.preventDefault();
 
     const trimmedMessage = draft.trim();
@@ -33,27 +63,61 @@ function MessageInput({ onSendMessage }) {
     }
 
     if (trimmedMessage.length > MAX_MESSAGE_LENGTH) {
-      setError("Message exceeds the 4,000 character limit.");
+      setError(
+        "Message exceeds the 4,000 character limit."
+      );
       return;
     }
 
-    onSendMessage(trimmedMessage);
+    if (sending || disabled) {
+      return;
+    }
 
-    setDraft("");
+    setSending(true);
     setError("");
+
+    stopTypingTimer();
+    onTypingChange?.(false);
+
+    try {
+      // Wait for the backend acknowledgement.
+      await onSendMessage(trimmedMessage);
+
+      // Only clear the draft after successful acknowledgement.
+      setDraft("");
+    } catch (sendError) {
+      setError(
+        sendError.message ||
+          "Message could not be sent. Try again."
+      );
+    } finally {
+      setSending(false);
+    }
   }
 
+
   function handleKeyDown(event) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
       event.preventDefault();
       event.currentTarget.form.requestSubmit();
     }
   }
 
+
+  // Stop the typing timer and typing state on unmount.
+  useEffect(() => {
+    return () => {
+      stopTypingTimer();
+      onTypingChange?.(false);
+    };
+  }, [onTypingChange]);
+
+
   return (
     <div className="message-input-container">
-      <TypingIndicator isTyping={isTyping} />
-
       <form onSubmit={handleSubmit}>
         <div className="message-toolbar">
           <span>Markdown supported</span>
@@ -74,6 +138,7 @@ function MessageInput({ onSendMessage }) {
             className="attachment-button"
             type="button"
             aria-label="Attach file"
+            disabled
           >
             +
           </button>
@@ -82,19 +147,24 @@ function MessageInput({ onSendMessage }) {
             value={draft}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Write a message..."
+            placeholder={
+              disabled
+                ? "Connecting to chat..."
+                : "Write a message..."
+            }
             aria-label="Write a message"
             maxLength={MAX_MESSAGE_LENGTH}
             rows={1}
+            disabled={disabled || sending}
           />
 
           <button
             className="send-button"
             type="submit"
-            disabled={!draft.trim()}
+            disabled={!draft.trim() || disabled || sending}
             aria-label="Send message"
           >
-            ↑
+            {sending ? "…" : "↑"}
           </button>
         </div>
 
