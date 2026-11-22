@@ -1204,3 +1204,54 @@
   line-height: 1.6;
   white-space: pre;
 }
+
+
+/* STEP 6: Socket.IO connection state */
+
+.socket-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  color: #a2adbd;
+  font-size: 11px;
+}
+
+.socket-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #8792a2;
+}
+
+.socket-status-connected .socket-status-dot {
+  background: #4bc48a;
+  box-shadow: 0 0 8px rgb(75 196 138 / 30%);
+}
+
+.socket-status-connecting .socket-status-dot {
+  background: #e8b35e;
+  animation: socketPulse 1.2s infinite ease-in-out;
+}
+
+.socket-status-disconnected .socket-status-dot {
+  background: #e27676;
+}
+
+.socket-notice {
+  padding: 8px 30px;
+  background: #2a2330;
+  color: #e4b8c2;
+  font-size: 11px;
+}
+
+.socket-room-error {
+  margin: 8px 16px;
+}
+
+@keyframes socketPulse {
+  50% {
+    opacity: 0.4;
+  }
+}
