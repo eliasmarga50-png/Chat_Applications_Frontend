@@ -1255,3 +1255,34 @@
     opacity: 0.4;
   }
 }
+
+/* STEP 7: shared presence and room activity */
+
+.online-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #aab6c8;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.online-count .online-indicator {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #4bc48a;
+}
+
+.room-activity {
+  margin: 5px 0 0;
+  color: #8d9bb0;
+  font-size: 10px;
+}
+
+@media (max-width: 760px) {
+  .online-count {
+    display: none;
+  }
+}
