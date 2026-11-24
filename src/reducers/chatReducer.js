@@ -1,46 +1,28 @@
-import { createInitialChatState } from "../context/chat-context";
+import { createInitialChatState } from "../context/chat-context.js";
 
 export const initialChatState = createInitialChatState();
 
-function uniqueById(items) {
-  const seen = new Set();
-
-  return items.filter((item) => {
-    const id = String(item.id || item._id);
-
-    if (!id || seen.has(id)) return false;
-
-    seen.add(id);
-    return true;
-  });
+function messageId(message) {
+  return String(message?.id || message?._id || "");
 }
 
-function sortMessages(messages) {
-  return uniqueById(messages).sort((a, b) => {
-    const timeDifference =
+function mergeMessages(messages) {
+  const byId = new Map();
+
+  for (const message of messages) {
+    const id = messageId(message);
+
+    if (id) {
+      byId.set(id, { ...message, id });
+    }
+  }
+
+  return [...byId.values()].sort((a, b) => {
+    const difference =
       new Date(a.createdAt) - new Date(b.createdAt);
 
-    if (timeDifference !== 0) return timeDifference;
-
-    return String(a.id).localeCompare(String(b.id));
+    return difference || messageId(a).localeCompare(messageId(b));
   });
-}
-
-function addMessageToRoom(state, roomSlug, message) {
-  if (!roomSlug || !message) return state;
-
-  const currentMessages = state.messagesByRoom[roomSlug] || [];
-
-  return {
-    ...state,
-    messagesByRoom: {
-      ...state.messagesByRoom,
-      [roomSlug]: sortMessages([
-        ...currentMessages,
-        message,
-      ]),
-    },
-  };
 }
 
 export function chatReducer(state, action) {
@@ -55,41 +37,51 @@ export function chatReducer(state, action) {
       return {
         ...state,
         activeRoomSlug: action.payload || null,
-        typingUsersByRoom: {
-          ...state.typingUsersByRoom,
-          [action.payload]: [],
-        },
       };
 
-    case "SET_ROOM_MESSAGES":
+    case "SET_ROOM_MESSAGES": {
+      const { roomSlug, messages } = action.payload;
+
       return {
         ...state,
         messagesByRoom: {
           ...state.messagesByRoom,
-          [action.payload.roomSlug]: sortMessages(
-            action.payload.messages || []
-          ),
+          [roomSlug]: mergeMessages(messages || []),
         },
       };
+    }
 
-    case "ADD_MESSAGE":
-      return addMessageToRoom(
-        state,
-        action.payload.roomSlug,
-        action.payload.message
-      );
+    case "ADD_MESSAGE": {
+      const { roomSlug, message } = action.payload;
 
-    case "ADD_MESSAGES":
+      if (!roomSlug || !message) return state;
+
       return {
         ...state,
         messagesByRoom: {
           ...state.messagesByRoom,
-          [action.payload.roomSlug]: sortMessages([
-            ...(state.messagesByRoom[action.payload.roomSlug] || []),
-            ...(action.payload.messages || []),
+          [roomSlug]: mergeMessages([
+            ...(state.messagesByRoom[roomSlug] || []),
+            message,
           ]),
         },
       };
+    }
+
+    case "ADD_MESSAGES": {
+      const { roomSlug, messages } = action.payload;
+
+      return {
+        ...state,
+        messagesByRoom: {
+          ...state.messagesByRoom,
+          [roomSlug]: mergeMessages([
+            ...(state.messagesByRoom[roomSlug] || []),
+            ...(messages || []),
+          ]),
+        },
+      };
+    }
 
     case "SET_TYPING_USERS":
       return {
@@ -102,29 +94,25 @@ export function chatReducer(state, action) {
 
     case "USER_TYPING": {
       const { roomSlug, userId, isTyping } = action.payload;
-      const currentUsers =
-        state.typingUsersByRoom[roomSlug] || [];
 
-      const nextUsers = isTyping
-        ? currentUsers.includes(userId)
-          ? currentUsers
-          : [...currentUsers, userId]
-        : currentUsers.filter((id) => id !== userId);
+      if (!roomSlug || !userId) return state;
+
+      const current = state.typingUsersByRoom[roomSlug] || [];
+
+      const next = isTyping
+        ? current.includes(userId)
+          ? current
+          : [...current, userId]
+        : current.filter((id) => id !== userId);
 
       return {
         ...state,
         typingUsersByRoom: {
           ...state.typingUsersByRoom,
-          [roomSlug]: nextUsers,
+          [roomSlug]: next,
         },
       };
     }
-
-    case "SET_ONLINE_USERS":
-      return {
-        ...state,
-        onlineUsers: action.payload || {},
-      };
 
     case "USER_ONLINE":
       return {
@@ -138,19 +126,23 @@ export function chatReducer(state, action) {
       };
 
     case "USER_OFFLINE": {
-      const nextUsers = { ...state.onlineUsers };
-      delete nextUsers[action.payload.userId];
+      const onlineUsers = { ...state.onlineUsers };
+
+      delete onlineUsers[action.payload.userId];
 
       return {
         ...state,
-        onlineUsers: nextUsers,
+        onlineUsers,
       };
     }
 
     case "SET_ONLINE_USER_COUNT":
       return {
         ...state,
-        onlineUserCount: Number(action.payload) || 0,
+        onlineUserCount: Math.max(
+          0,
+          Number(action.payload) || 0
+        ),
       };
 
     case "ROOM_ACTIVITY":
@@ -162,14 +154,16 @@ export function chatReducer(state, action) {
         },
       };
 
-    case "CLEAR_ROOM_ACTIVITY":
+    case "CLEAR_ROOM_ACTIVITY": {
+      const roomActivity = { ...state.roomActivity };
+
+      delete roomActivity[action.payload];
+
       return {
         ...state,
-        roomActivity: {
-          ...state.roomActivity,
-          [action.payload]: null,
-        },
+        roomActivity,
       };
+    }
 
     case "SET_LOADING_ROOMS":
       return {
