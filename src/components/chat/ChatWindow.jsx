@@ -1,10 +1,14 @@
-
-import { useLayoutEffect, useRef } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 
 import MessageItem from "./MessageItem";
 import MessageInput from "./MessageInput";
 import TypingIndicator from "./TypingIndicator";
 
+import { useChat } from "../../hooks/useChat";
 
 function dateLabel(value) {
   if (!value) return "Earlier";
@@ -38,10 +42,8 @@ function dateLabel(value) {
   });
 }
 
-
 function ChatWindow({
   room,
-  messages,
   isLoading,
   error,
   olderError,
@@ -52,20 +54,30 @@ function ChatWindow({
   roomError,
   onRetryRoom,
   onSendMessage,
-
   connectionStatus,
   connectionError,
   roomJoinError,
   joinedRoomSlug,
   onRetryRoomJoin,
-  typingUserCount,
   onTypingChange,
 }) {
-  const messageContainerRef = useRef(null);
+  const { state } = useChat();
 
+  const messages = useMemo(
+    () => state.messagesByRoom[room?.slug] || [],
+    [state.messagesByRoom, room?.slug]
+  );
+
+  const typingUserCount = (
+    state.typingUsersByRoom[room?.slug] || []
+  ).length;
+
+  const latestRoomActivity =
+    state.roomActivity[room?.slug];
+
+  const messageContainerRef = useRef(null);
   const previousMessagesHeightRef = useRef(null);
   const previousRoomSlugRef = useRef(room?.slug);
-
 
   async function handleLoadOlder() {
     const container = messageContainerRef.current;
@@ -84,8 +96,6 @@ function ChatWindow({
     }
   }
 
-
-  // Preserve scroll position when older messages are prepended.
   useLayoutEffect(() => {
     const container = messageContainerRef.current;
 
@@ -111,16 +121,15 @@ function ChatWindow({
     }
   }, [room?.slug, messages, isLoading]);
 
-
   let previousDate = null;
 
-  const isConnected = connectionStatus === "connected";
+  const isConnected =
+    connectionStatus === "connected";
 
   const roomReady =
     isConnected &&
     joinedRoomSlug === room?.slug &&
     !roomJoinError;
-
 
   return (
     <main className="chat-window">
@@ -138,6 +147,15 @@ function ChatWindow({
             {room?.description ||
               "Loading channel information"}
           </p>
+
+          {latestRoomActivity?.user && (
+            <p className="room-activity" role="status">
+              {latestRoomActivity.user.username ||
+                latestRoomActivity.user.displayName ||
+                "A member"}{" "}
+              {latestRoomActivity.type} this room
+            </p>
+          )}
 
           {room?.tags?.length > 0 && (
             <div className="room-tags">
@@ -175,14 +193,12 @@ function ChatWindow({
         </div>
       </header>
 
-
       {connectionError &&
         connectionStatus !== "connected" && (
           <div className="socket-notice" role="status">
             {connectionError}
           </div>
         )}
-
 
       {roomJoinError && (
         <div
@@ -202,10 +218,11 @@ function ChatWindow({
         </div>
       )}
 
-
       {roomError && (
         <div className="api-inline-error" role="alert">
-          <span>Room details could not be loaded.</span>
+          <span>
+            Room details could not be loaded.
+          </span>
 
           <button
             type="button"
@@ -215,7 +232,6 @@ function ChatWindow({
           </button>
         </div>
       )}
-
 
       <div
         className="message-list"
@@ -235,7 +251,6 @@ function ChatWindow({
           </div>
         )}
 
-
         {olderError && (
           <div className="api-inline-error" role="alert">
             <span>
@@ -251,7 +266,6 @@ function ChatWindow({
             </button>
           </div>
         )}
-
 
         {isLoading ? (
           <div className="loading-state">
@@ -273,7 +287,6 @@ function ChatWindow({
         ) : messages.length > 0 ? (
           messages.map((message) => {
             const label = dateLabel(message.createdAt);
-
             const showDivider = label !== previousDate;
 
             previousDate = label;
@@ -309,9 +322,7 @@ function ChatWindow({
         )}
       </div>
 
-
       <TypingIndicator userCount={typingUserCount} />
-
 
       {room && (
         <MessageInput
@@ -323,6 +334,5 @@ function ChatWindow({
     </main>
   );
 }
-
 
 export default ChatWindow;
