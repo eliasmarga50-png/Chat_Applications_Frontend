@@ -1,48 +1,57 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { getRooms } from "../services/roomService";
 import { normalizeRoom } from "../utils/roomAdapter";
+import { useChat } from "./useChat";
 
 function useRooms() {
-  const [state, setState] = useState({
-    rooms: [],
-    loading: true,
-    error: null,
-  });
+  const { state, dispatch } = useChat();
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const requestControllerRef = useRef(null);
 
   const loadRooms = useCallback(
-    async (signal, updateLoading = true) => {
-      if (updateLoading) {
-        setState((previous) => ({
-          ...previous,
-          loading: true,
-          error: null,
-        }));
-      }
+    async (signal) => {
+      setLoading(true);
+      setError(null);
+
+      dispatch({
+        type: "SET_LOADING_ROOMS",
+        payload: true,
+      });
 
       try {
         const data = await getRooms({ signal });
 
         if (signal?.aborted) return;
 
-        setState({
-          rooms: data.map(normalizeRoom),
-          loading: false,
-          error: null,
+        dispatch({
+          type: "SET_ROOMS",
+          payload: data.map(normalizeRoom),
         });
-      } catch (error) {
+      } catch (requestError) {
         if (signal?.aborted) return;
 
-        setState((previous) => ({
-          ...previous,
-          loading: false,
-          error,
-        }));
+        setError(requestError);
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+
+          dispatch({
+            type: "SET_LOADING_ROOMS",
+            payload: false,
+          });
+        }
       }
     },
-    []
+    [dispatch]
   );
 
   useEffect(() => {
@@ -50,7 +59,11 @@ function useRooms() {
 
     requestControllerRef.current = controller;
 
-    loadRooms(controller.signal, false);
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) {
+        loadRooms(controller.signal);
+      }
+    });
 
     return () => {
       controller.abort();
@@ -69,7 +82,9 @@ function useRooms() {
   }, [loadRooms]);
 
   return {
-    ...state,
+    rooms: state.rooms,
+    loading,
+    error,
     retry,
   };
 }
