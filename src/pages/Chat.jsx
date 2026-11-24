@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -15,15 +14,12 @@ import { useChatSocket } from "../hooks/useChatSocket";
 
 import NotFound from "./NotFound";
 
-
 function Chat() {
   const { user, token, logout } = useAuth();
 
   const navigate = useNavigate();
   const { slug } = useParams();
 
-
-  // 1. Fetch public rooms.
   const {
     rooms,
     loading: roomsLoading,
@@ -31,18 +27,12 @@ function Chat() {
     retry: retryRooms,
   } = useRooms();
 
-
-  // 2. Redirect /chat to a default room.
+  // Redirect /chat to the default room.
   useEffect(() => {
-    if (
-      !slug &&
-      !roomsLoading &&
-      rooms.length > 0
-    ) {
+    if (!slug && !roomsLoading && rooms.length > 0) {
       const defaultRoom =
-        rooms.find(
-          (room) => room.slug === "javascript"
-        ) || rooms[0];
+        rooms.find((room) => room.slug === "javascript") ||
+        rooms[0];
 
       navigate(`/chat/${defaultRoom.slug}`, {
         replace: true,
@@ -50,8 +40,6 @@ function Chat() {
     }
   }, [slug, roomsLoading, rooms, navigate]);
 
-
-  // 3. Fetch room details from REST.
   const {
     room: detailedRoom,
     loading: roomLoading,
@@ -59,11 +47,7 @@ function Chat() {
     retry: retryRoom,
   } = useRoom(slug);
 
-
-  // 4. Load room messages through REST.
-  // Real-time messages will be merged into this same state.
   const {
-    messages,
     loading: messagesLoading,
     error: messagesError,
     hasMore,
@@ -74,22 +58,17 @@ function Chat() {
     addRealtimeMessage,
   } = useMessages(slug, user?.username);
 
-
-  // Prefer the room detail response, falling back to the room list.
   const roomFromList = rooms.find(
     (item) => item.slug === slug
   );
 
   const activeRoom = detailedRoom || roomFromList || null;
 
-
-  // 5. Connect to Socket.IO and handle real-time chat.
   const {
     connectionStatus,
     connectionError,
     roomJoinError,
     joinedRoomSlug,
-    typingUserIds,
     sendMessage,
     onTypingChange,
     retryRoomJoin,
@@ -99,8 +78,6 @@ function Chat() {
     addRealtimeMessage
   );
 
-
-  // 6. Room selection changes the URL.
   const handleSelectRoom = useCallback(
     (roomId) => {
       const selectedRoom = rooms.find(
@@ -114,8 +91,6 @@ function Chat() {
     [rooms, navigate]
   );
 
-
-  // 7. Logout.
   function handleLogout() {
     logout();
 
@@ -124,12 +99,9 @@ function Chat() {
     });
   }
 
-
-  // Unknown room.
   if (slug && roomError?.status === 404) {
     return <NotFound />;
   }
-
 
   return (
     <div className="app">
@@ -152,8 +124,6 @@ function Chat() {
         <Sidebar />
 
         <RoomList
-          rooms={rooms}
-          activeRoomId={activeRoom?.id}
           loading={roomsLoading}
           error={roomsError}
           onRetry={retryRooms}
@@ -162,7 +132,6 @@ function Chat() {
 
         <ChatWindow
           room={activeRoom}
-          messages={messages}
           isLoading={roomLoading || messagesLoading}
           error={messagesError}
           olderError={olderError}
@@ -178,13 +147,11 @@ function Chat() {
           roomJoinError={roomJoinError}
           joinedRoomSlug={joinedRoomSlug}
           onRetryRoomJoin={retryRoomJoin}
-          typingUserCount={typingUserIds.length}
           onTypingChange={onTypingChange}
         />
       </div>
     </div>
   );
 }
-
 
 export default Chat;
