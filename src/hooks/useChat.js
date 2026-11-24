@@ -1,5 +1,4 @@
 import { useContext } from "react";
-
 import { ChatContext } from "../context/chat-context";
 
 export function useChat() {
