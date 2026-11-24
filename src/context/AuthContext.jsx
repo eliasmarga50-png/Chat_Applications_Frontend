@@ -3,7 +3,7 @@ import { useEffect, useReducer } from "react";
 import { ChatContext } from "./chat-context";
 import { chatReducer, initialChatState } from "../reducers/chatReducer";
 
-export function ChatProvider({ children }) {
+export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(
     chatReducer,
     initialChatState
