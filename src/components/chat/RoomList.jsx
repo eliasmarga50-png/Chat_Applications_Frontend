@@ -1,13 +1,20 @@
 import { useState } from "react";
+import { useChat } from "../../hooks/useChat";
 
 function RoomList({
-  rooms,
-  activeRoomId,
   onSelectRoom,
   loading,
   error,
   onRetry,
 }) {
+  const { state } = useChat();
+
+  const rooms = state.rooms;
+
+  const activeRoomId = rooms.find(
+    (room) => room.slug === state.activeRoomSlug
+  )?.id;
+
   const [search, setSearch] = useState("");
 
   const filteredRooms = rooms.filter((room) =>
