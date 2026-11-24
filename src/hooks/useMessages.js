@@ -1,4 +1,3 @@
-
 import {
   useCallback,
   useEffect,
@@ -7,9 +6,9 @@ import {
 } from "react";
 
 import { getRoomMessages } from "../services/messageService";
+import { useChat } from "./useChat";
 
 const PAGE_SIZE = 20;
-
 
 function formatTime(date) {
   return new Date(date).toLocaleTimeString([], {
@@ -17,7 +16,6 @@ function formatTime(date) {
     minute: "2-digit",
   });
 }
-
 
 function normalizeMessage(message, currentUsername) {
   const sender = message.sender || {};
@@ -39,51 +37,27 @@ function normalizeMessage(message, currentUsername) {
 
   return {
     ...message,
+
     id: String(message._id || message.id),
+
     username,
     displayName,
     initials,
+
     content,
     createdAt: message.createdAt,
     time: formatTime(message.createdAt),
+
     isOwn: username === currentUsername,
     isLocal: false,
   };
 }
 
-
-function uniqueMessages(messages) {
-  const seen = new Set();
-
-  return messages.filter((message) => {
-    if (seen.has(message.id)) {
-      return false;
-    }
-
-    seen.add(message.id);
-    return true;
-  });
-}
-
-
-function chronological(messages) {
-  return uniqueMessages(messages).sort((a, b) => {
-    const timeDifference =
-      new Date(a.createdAt) - new Date(b.createdAt);
-
-    if (timeDifference !== 0) {
-      return timeDifference;
-    }
-
-    return String(a.id).localeCompare(String(b.id));
-  });
-}
-
-
 function useMessages(slug, currentUsername) {
-  const [state, setState] = useState({
+  const { state, dispatch } = useChat();
+
+  const [meta, setMeta] = useState({
     slug: null,
-    messages: [],
     loading: false,
     error: null,
     hasMore: false,
@@ -92,132 +66,163 @@ function useMessages(slug, currentUsername) {
     olderError: null,
   });
 
-  const initialRequestRef = useRef(null);
-  const olderRequestRef = useRef(null);
-  const olderRequestInProgressRef = useRef(false);
+  const initialControllerRef = useRef(null);
+  const olderControllerRef = useRef(null);
 
+  const olderInProgressRef = useRef(false);
+  const requestVersionRef = useRef(0);
 
-  // Load the initial message page from the REST API.
-  const loadMessages = useCallback(async (
-    targetSlug,
-    signal
-  ) => {
-    if (!targetSlug) return;
+  const loadMessages = useCallback(
+    async (targetSlug, signal) => {
+      if (!targetSlug) return;
 
-    setState((previous) => ({
-      ...previous,
-      slug: targetSlug,
-      messages:
-        previous.slug === targetSlug
-          ? previous.messages
-          : [],
-      loading: true,
-      error: null,
-    }));
+      const requestVersion =
+        ++requestVersionRef.current;
 
-    try {
-      const data = await getRoomMessages(targetSlug, {
-        limit: PAGE_SIZE,
-        signal,
-      });
-
-      if (signal?.aborted) return;
-
-      const fetchedMessages = data.messages
-        .map((message) =>
-          normalizeMessage(message, currentUsername)
-        )
-        .reverse();
-
-      setState((previous) => ({
-        slug: targetSlug,
-
-        // Merge messages received through Socket.IO while
-        // the REST request was loading.
-        messages: chronological(
-          previous.slug === targetSlug
-            ? [...previous.messages, ...fetchedMessages]
-            : fetchedMessages
-        ),
-
-        loading: false,
-        error: null,
-        hasMore: data.hasMore,
-        nextCursor: data.nextCursor,
-        loadingOlder: false,
-        olderError: null,
-      }));
-    } catch (error) {
-      if (signal?.aborted) return;
-
-      setState((previous) => ({
+      setMeta((previous) => ({
         ...previous,
         slug: targetSlug,
-        loading: false,
-        error,
+        loading: true,
+        error: null,
       }));
-    }
-  }, [currentUsername]);
 
+      dispatch({
+        type: "SET_LOADING_MESSAGES",
+        payload: true,
+      });
 
-  // Fetch initial history when the selected room changes.
+      try {
+        const data = await getRoomMessages(
+          targetSlug,
+          {
+            limit: PAGE_SIZE,
+            signal,
+          }
+        );
+
+        if (
+          signal?.aborted ||
+          requestVersion !== requestVersionRef.current
+        ) {
+          return;
+        }
+
+        const fetched = data.messages
+          .map((message) =>
+            normalizeMessage(message, currentUsername)
+          )
+          .reverse();
+
+        // Merge rather than replace, because realtime
+        // messages may have arrived while REST was loading.
+        dispatch({
+          type: "ADD_MESSAGES",
+          payload: {
+            roomSlug: targetSlug,
+            messages: fetched,
+          },
+        });
+
+        setMeta({
+          slug: targetSlug,
+          loading: false,
+          error: null,
+          hasMore: Boolean(data.hasMore),
+          nextCursor: data.nextCursor || null,
+          loadingOlder: false,
+          olderError: null,
+        });
+      } catch (requestError) {
+        if (
+          signal?.aborted ||
+          requestVersion !== requestVersionRef.current
+        ) {
+          return;
+        }
+
+        setMeta((previous) => ({
+          ...previous,
+          slug: targetSlug,
+          loading: false,
+          error: requestError,
+        }));
+      } finally {
+        if (
+          !signal?.aborted &&
+          requestVersion === requestVersionRef.current
+        ) {
+          dispatch({
+            type: "SET_LOADING_MESSAGES",
+            payload: false,
+          });
+        }
+      }
+    },
+    [currentUsername, dispatch]
+  );
+
+  // Fetch message history whenever the URL room changes.
   useEffect(() => {
     if (!slug) return undefined;
 
-    const controller = new AbortController();
-    initialRequestRef.current = controller;
+    dispatch({
+      type: "SET_ACTIVE_ROOM",
+      payload: slug,
+    });
 
-    olderRequestInProgressRef.current = false;
+    const controller = new AbortController();
+
+    initialControllerRef.current = controller;
+
+    olderControllerRef.current?.abort();
+    olderInProgressRef.current = false;
 
     loadMessages(slug, controller.signal);
 
     return () => {
       controller.abort();
 
-      olderRequestRef.current?.abort();
-      olderRequestRef.current = null;
+      olderControllerRef.current?.abort();
+      olderControllerRef.current = null;
 
-      olderRequestInProgressRef.current = false;
-      initialRequestRef.current = null;
+      olderInProgressRef.current = false;
     };
-  }, [slug, loadMessages]);
+  }, [slug, loadMessages, dispatch]);
 
-
-  // Reload current room's message history.
   const reloadMessages = useCallback(() => {
     if (!slug) return;
 
-    initialRequestRef.current?.abort();
-    olderRequestRef.current?.abort();
+    initialControllerRef.current?.abort();
+    olderControllerRef.current?.abort();
 
-    olderRequestRef.current = null;
-    olderRequestInProgressRef.current = false;
+    olderInProgressRef.current = false;
 
     const controller = new AbortController();
-    initialRequestRef.current = controller;
+
+    initialControllerRef.current = controller;
 
     loadMessages(slug, controller.signal);
   }, [slug, loadMessages]);
 
-
-  // Fetch the next older message page using the existing cursor.
+  // Fetch the next older page using the existing backend cursor.
   const loadOlder = useCallback(async () => {
     if (
       !slug ||
-      !state.hasMore ||
-      !state.nextCursor ||
-      state.loading ||
-      olderRequestInProgressRef.current
+      !meta.hasMore ||
+      !meta.nextCursor ||
+      meta.loading ||
+      olderInProgressRef.current
     ) {
       return false;
     }
 
-    olderRequestInProgressRef.current = true;
+    olderInProgressRef.current = true;
 
     const controller = new AbortController();
-    olderRequestRef.current = controller;
 
-    setState((previous) => ({
+    olderControllerRef.current = controller;
+
+    setMeta((previous) => ({
       ...previous,
       loadingOlder: true,
       olderError: null,
@@ -226,8 +231,8 @@ function useMessages(slug, currentUsername) {
     try {
       const data = await getRoomMessages(slug, {
         limit: PAGE_SIZE,
-        before: state.nextCursor.createdAt,
-        beforeId: state.nextCursor._id,
+        before: meta.nextCursor.createdAt,
+        beforeId: meta.nextCursor._id,
         signal: controller.signal,
       });
 
@@ -235,110 +240,98 @@ function useMessages(slug, currentUsername) {
         return false;
       }
 
-      const olderMessages = data.messages
+      const older = data.messages
         .map((message) =>
           normalizeMessage(message, currentUsername)
         )
         .reverse();
 
-      setState((previous) => ({
+      dispatch({
+        type: "ADD_MESSAGES",
+        payload: {
+          roomSlug: slug,
+          messages: older,
+        },
+      });
+
+      setMeta((previous) => ({
         ...previous,
-        messages: chronological([
-          ...olderMessages,
-          ...previous.messages,
-        ]),
-        hasMore: data.hasMore,
-        nextCursor: data.nextCursor,
+        hasMore: Boolean(data.hasMore),
+        nextCursor: data.nextCursor || null,
         loadingOlder: false,
         olderError: null,
       }));
 
       return true;
-    } catch (error) {
+    } catch (requestError) {
       if (controller.signal.aborted) {
         return false;
       }
 
-      setState((previous) => ({
+      setMeta((previous) => ({
         ...previous,
         loadingOlder: false,
-        olderError: error,
+        olderError: requestError,
       }));
 
       return false;
     } finally {
-      olderRequestInProgressRef.current = false;
+      olderInProgressRef.current = false;
 
-      if (olderRequestRef.current === controller) {
-        olderRequestRef.current = null;
+      if (olderControllerRef.current === controller) {
+        olderControllerRef.current = null;
       }
     }
   }, [
     slug,
-    state.hasMore,
-    state.nextCursor,
-    state.loading,
+    meta.hasMore,
+    meta.nextCursor,
+    meta.loading,
     currentUsername,
+    dispatch,
   ]);
 
+  // Store incoming Socket.IO messages in the same reducer state.
+  const addRealtimeMessage = useCallback(
+    (message) => {
+      if (!message?.room || message.room !== slug) {
+        return;
+      }
 
-  // Add a message received from the Socket.IO server.
-  const addRealtimeMessage = useCallback((message) => {
-    if (!message?.room || message.room !== slug) {
-      return;
-    }
+      dispatch({
+        type: "ADD_MESSAGE",
+        payload: {
+          roomSlug: message.room,
+          message: normalizeMessage(
+            message,
+            currentUsername
+          ),
+        },
+      });
+    },
+    [slug, currentUsername, dispatch]
+  );
 
-    const normalizedMessage = normalizeMessage(
-      message,
-      currentUsername
-    );
+  const isCurrentRoom = meta.slug === slug;
 
-    setState((previous) => {
-      const existingMessages =
-        previous.slug === message.room
-          ? previous.messages
-          : [];
-
-      return {
-        ...previous,
-        slug: message.room,
-        messages: chronological([
-          ...existingMessages,
-          normalizedMessage,
-        ]),
-      };
-    });
-  }, [slug, currentUsername]);
-
-
-  // Don't show messages belonging to the previous room.
-  if (state.slug !== slug) {
-    return {
-      messages: [],
-      loading: Boolean(slug),
-      error: null,
-      hasMore: false,
-      loadingOlder: false,
-      olderError: null,
-      reloadMessages,
-      loadOlder,
-      addRealtimeMessage,
-    };
-  }
-
+  const messages = isCurrentRoom
+    ? state.messagesByRoom[slug] || []
+    : [];
 
   return {
-    messages: state.messages,
-    loading: state.loading,
-    error: state.error,
-    hasMore: state.hasMore,
-    loadingOlder: state.loadingOlder,
-    olderError: state.olderError,
+    messages,
+
+    loading: !isCurrentRoom || meta.loading,
+    error: isCurrentRoom ? meta.error : null,
+
+    hasMore: isCurrentRoom && meta.hasMore,
+    loadingOlder: isCurrentRoom && meta.loadingOlder,
+    olderError: isCurrentRoom ? meta.olderError : null,
+
     reloadMessages,
     loadOlder,
     addRealtimeMessage,
   };
 }
-
 
 export { useMessages };
