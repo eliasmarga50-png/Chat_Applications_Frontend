@@ -1,4 +1,3 @@
-
 import {
   useCallback,
   useEffect,
@@ -7,6 +6,7 @@ import {
 } from "react";
 
 import { useSocket } from "./useSocket";
+import { useChat } from "./useChat";
 
 import {
   joinRoom,
@@ -15,13 +15,14 @@ import {
   setTyping as emitTyping,
 } from "../services/socketService";
 
-
 function useChatSocket(_token, slug, onMessage) {
   const {
     socket,
     connectionStatus,
     connectionError,
   } = useSocket();
+
+  const { dispatch } = useChat();
 
   const currentSlugRef = useRef(slug);
   const onMessageRef = useRef(onMessage);
@@ -33,107 +34,74 @@ function useChatSocket(_token, slug, onMessage) {
   const transitionIdRef = useRef(0);
   const localTypingRef = useRef(false);
 
-  const [roomJoinError, setRoomJoinError] =
-    useState(null);
+  const [roomJoinError, setRoomJoinError] = useState(null);
+  const [joinedRoomSlug, setJoinedRoomSlug] = useState(null);
 
-  const [joinedRoomSlug, setJoinedRoomSlug] =
-    useState(null);
-
-  const [typingUserIds, setTypingUserIds] =
-    useState([]);
-
-
-  // Keep the latest room slug available to socket callbacks.
   useEffect(() => {
     currentSlugRef.current = slug;
   }, [slug]);
 
-
-  // Keep the latest message callback available without
-  // reconnecting the socket every time the callback changes.
   useEffect(() => {
     onMessageRef.current = onMessage;
   }, [onMessage]);
 
-
-  const clearTypingUsers = useCallback(() => {
-    setTypingUserIds([]);
-  }, []);
-
-
-  // Safely transition from one socket room to another.
   const transitionToRoom = useCallback(
-    async (targetSocket, targetSlug) => {
-      if (!targetSocket?.connected || !targetSlug) {
-        return;
-      }
+    async (targetSlug) => {
+      if (!socket?.connected || !targetSlug) return;
 
-      // Already joined this room on this socket.
       if (
         joinedSlugRef.current === targetSlug &&
-        joinedSocketIdRef.current === targetSocket.id
+        joinedSocketIdRef.current === socket.id
       ) {
         return;
       }
 
-      // Prevent duplicate pending joins.
       if (
         pendingJoinRef.current?.slug === targetSlug &&
-        pendingJoinRef.current?.socketId === targetSocket.id
+        pendingJoinRef.current?.socketId === socket.id
       ) {
         return;
       }
 
-      const transitionId =
-        ++transitionIdRef.current;
+      const transitionId = ++transitionIdRef.current;
 
       pendingJoinRef.current = {
         slug: targetSlug,
-        socketId: targetSocket.id,
+        socketId: socket.id,
       };
 
       setRoomJoinError(null);
       setJoinedRoomSlug(null);
 
       const previousSlug = joinedSlugRef.current;
-      const previousSocketId =
-        joinedSocketIdRef.current;
+      const previousSocketId = joinedSocketIdRef.current;
 
-
-      // Leave the previous room first.
       if (
         previousSlug &&
         previousSlug !== targetSlug &&
-        previousSocketId === targetSocket.id
+        previousSocketId === socket.id
       ) {
         localTypingRef.current = false;
 
         emitTyping(
-          targetSocket,
+          socket,
           "typing:stop",
           previousSlug
         ).catch(() => {});
 
         try {
-          await leaveRoom(
-            targetSocket,
-            previousSlug
-          );
+          await leaveRoom(socket, previousSlug);
         } catch {
-          // Continue with the new room transition.
+          // Continue with the target room.
         }
       }
 
-
-      // Ignore stale room transitions.
       if (
         transitionId !== transitionIdRef.current ||
-        !targetSocket.connected ||
+        !socket.connected ||
         currentSlugRef.current !== targetSlug
       ) {
-        if (
-          pendingJoinRef.current?.slug === targetSlug
-        ) {
+        if (pendingJoinRef.current?.slug === targetSlug) {
           pendingJoinRef.current = null;
         }
 
@@ -143,45 +111,31 @@ function useChatSocket(_token, slug, onMessage) {
       joinedSlugRef.current = null;
       joinedSocketIdRef.current = null;
 
-
       try {
-        await joinRoom(
-          targetSocket,
-          targetSlug
-        );
+        await joinRoom(socket, targetSlug);
 
-
-        // The user may have navigated while the join
-        // request was waiting for its acknowledgement.
         if (
           transitionId !== transitionIdRef.current ||
-          !targetSocket.connected ||
+          !socket.connected ||
           currentSlugRef.current !== targetSlug
         ) {
-          try {
-            if (targetSocket.connected) {
-              await leaveRoom(
-                targetSocket,
-                targetSlug
-              );
+          if (socket.connected) {
+            try {
+              await leaveRoom(socket, targetSlug);
+            } catch {
+              // The connection may have disconnected.
             }
-          } catch {
-            // Connection may have disappeared already.
           }
 
           return;
         }
 
-
         joinedSlugRef.current = targetSlug;
-        joinedSocketIdRef.current =
-          targetSocket.id;
+        joinedSocketIdRef.current = socket.id;
 
         setJoinedRoomSlug(targetSlug);
       } catch (error) {
-        if (
-          transitionId === transitionIdRef.current
-        ) {
+        if (transitionId === transitionIdRef.current) {
           joinedSlugRef.current = null;
           joinedSocketIdRef.current = null;
 
@@ -191,65 +145,54 @@ function useChatSocket(_token, slug, onMessage) {
       } finally {
         if (
           pendingJoinRef.current?.slug === targetSlug &&
-          pendingJoinRef.current?.socketId === targetSocket.id
+          pendingJoinRef.current?.socketId === socket.id
         ) {
           pendingJoinRef.current = null;
         }
       }
     },
-    []
+    [socket]
   );
 
-
-  // Subscribe to chat events using the shared socket.
+  // Listen to the shared socket.
   useEffect(() => {
-    if (!socket) {
-      return undefined;
-    }
+    if (!socket) return undefined;
 
-
-    function handleConnect() {
-      // A reconnect creates a new socket ID. The old room
-      // acknowledgement cannot be considered valid anymore.
+    function onConnect() {
       joinedSlugRef.current = null;
       joinedSocketIdRef.current = null;
       pendingJoinRef.current = null;
 
-      setJoinedRoomSlug(null);
-      clearTypingUsers();
-
-      transitionToRoom(
-        socket,
-        currentSlugRef.current
-      );
+      transitionToRoom(currentSlugRef.current);
     }
 
-
-    function handleDisconnect() {
-      // Cancel any room transition in progress.
+    function onDisconnect() {
       transitionIdRef.current += 1;
 
       joinedSlugRef.current = null;
       joinedSocketIdRef.current = null;
       pendingJoinRef.current = null;
 
+      localTypingRef.current = false;
+
       setJoinedRoomSlug(null);
 
-      localTypingRef.current = false;
-      clearTypingUsers();
+      dispatch({
+        type: "SET_TYPING_USERS",
+        payload: {
+          roomSlug: currentSlugRef.current,
+          userIds: [],
+        },
+      });
     }
 
-
-    function handleMessage(message) {
-      if (
-        message?.room === currentSlugRef.current
-      ) {
+    function onMessage(message) {
+      if (message?.room === currentSlugRef.current) {
         onMessageRef.current?.(message);
       }
     }
 
-
-    function handleTypingUpdate(payload) {
+    function onTyping(payload) {
       if (
         payload?.room !== currentSlugRef.current ||
         !payload.userId
@@ -257,39 +200,32 @@ function useChatSocket(_token, slug, onMessage) {
         return;
       }
 
-      setTypingUserIds((previous) => {
-        if (payload.isTyping) {
-          return previous.includes(payload.userId)
-            ? previous
-            : [...previous, payload.userId];
-        }
-
-        return previous.filter(
-          (id) => id !== payload.userId
-        );
+      dispatch({
+        type: "USER_TYPING",
+        payload: {
+          roomSlug: payload.room,
+          userId: payload.userId,
+          isTyping: Boolean(payload.isTyping),
+        },
       });
     }
 
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("message:new", onMessage);
+    socket.on("typing:update", onTyping);
 
-    socket.on("connect", handleConnect);
-    socket.on("disconnect", handleDisconnect);
-    socket.on("message:new", handleMessage);
-    socket.on("typing:update", handleTypingUpdate);
-
-
-    // The Provider may have connected before this hook mounted.
     if (socket.connected) {
-      handleConnect();
+      transitionToRoom(currentSlugRef.current);
     }
-
 
     return () => {
       transitionIdRef.current += 1;
 
-      socket.off("connect", handleConnect);
-      socket.off("disconnect", handleDisconnect);
-      socket.off("message:new", handleMessage);
-      socket.off("typing:update", handleTypingUpdate);
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("message:new", onMessage);
+      socket.off("typing:update", onTyping);
 
       localTypingRef.current = false;
 
@@ -297,44 +233,22 @@ function useChatSocket(_token, slug, onMessage) {
       joinedSocketIdRef.current = null;
       pendingJoinRef.current = null;
     };
-  }, [
-    socket,
-    transitionToRoom,
-    clearTypingUsers,
-  ]);
+  }, [socket, transitionToRoom, dispatch]);
 
-
-  // Join the room selected through the URL.
+  // Change rooms when the URL slug changes.
   useEffect(() => {
-    if (
-      !socket?.connected ||
-      !slug
-    ) {
-      return undefined;
-    }
+    if (!socket?.connected || !slug) return undefined;
 
-    // Defer the external socket operation so the effect
-    // does not synchronously trigger state updates.
-    const transitionTimer = setTimeout(() => {
-      transitionToRoom(socket, slug);
-    }, 0);
+    const timer = window.setTimeout(
+      () => transitionToRoom(slug),
+      0
+    );
 
-    return () => clearTimeout(transitionTimer);
-  }, [
-    socket,
-    slug,
-    transitionToRoom,
-  ]);
+    return () => window.clearTimeout(timer);
+  }, [socket, slug, connectionStatus, transitionToRoom]);
 
-
-  // Retry joining the current room.
   const retryRoomJoin = useCallback(() => {
-    const targetSlug = currentSlugRef.current;
-
-    if (
-      !socket?.connected ||
-      !targetSlug
-    ) {
+    if (!socket?.connected || !currentSlugRef.current) {
       return;
     }
 
@@ -345,25 +259,17 @@ function useChatSocket(_token, slug, onMessage) {
     setRoomJoinError(null);
     setJoinedRoomSlug(null);
 
-    transitionToRoom(
-      socket,
-      targetSlug
-    );
-  }, [
-    socket,
-    transitionToRoom,
-  ]);
+    transitionToRoom(currentSlugRef.current);
+  }, [socket, transitionToRoom]);
 
-
-  // Send typing:start or typing:stop to the backend.
-  const handleTypingChange = useCallback(
+  const onTypingChange = useCallback(
     (isTyping) => {
-      const targetSlug = currentSlugRef.current;
+      const roomSlug = currentSlugRef.current;
 
       if (
         !socket?.connected ||
-        !targetSlug ||
-        joinedSlugRef.current !== targetSlug ||
+        !roomSlug ||
+        joinedSlugRef.current !== roomSlug ||
         joinedSocketIdRef.current !== socket.id ||
         localTypingRef.current === isTyping
       ) {
@@ -372,24 +278,18 @@ function useChatSocket(_token, slug, onMessage) {
 
       localTypingRef.current = isTyping;
 
-      const eventName = isTyping
-        ? "typing:start"
-        : "typing:stop";
-
       emitTyping(
         socket,
-        eventName,
-        targetSlug
+        isTyping ? "typing:start" : "typing:stop",
+        roomSlug
       ).catch(() => {});
     },
     [socket]
   );
 
-
-  // Send a message through Socket.IO and await acknowledgement.
-  const handleSendMessage = useCallback(
+  const sendMessage = useCallback(
     async (content) => {
-      const targetSlug = currentSlugRef.current;
+      const roomSlug = currentSlugRef.current;
 
       if (!socket?.connected) {
         throw new Error(
@@ -397,14 +297,14 @@ function useChatSocket(_token, slug, onMessage) {
         );
       }
 
-      if (!targetSlug) {
+      if (!roomSlug) {
         throw new Error(
           "Select a chat room before sending a message."
         );
       }
 
       if (
-        joinedSlugRef.current !== targetSlug ||
+        joinedSlugRef.current !== roomSlug ||
         joinedSocketIdRef.current !== socket.id
       ) {
         throw new Error(
@@ -414,32 +314,26 @@ function useChatSocket(_token, slug, onMessage) {
 
       const response = await emitMessage(
         socket,
-        targetSlug,
+        roomSlug,
         content
       );
 
-      handleTypingChange(false);
+      onTypingChange(false);
 
       return response;
     },
-    [
-      socket,
-      handleTypingChange,
-    ]
+    [socket, onTypingChange]
   );
-
 
   return {
     connectionStatus,
     connectionError,
     roomJoinError,
     joinedRoomSlug,
-    typingUserIds,
-    sendMessage: handleSendMessage,
-    onTypingChange: handleTypingChange,
+    sendMessage,
+    onTypingChange,
     retryRoomJoin,
   };
 }
-
 
 export { useChatSocket };
