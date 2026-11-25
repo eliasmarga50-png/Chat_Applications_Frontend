@@ -1,4 +1,18 @@
-import { createInitialChatState } from "../context/ChatContext";
+export function createInitialChatState() {
+  return {
+    rooms: [],
+    activeRoomSlug: null,
+    messagesByRoom: {},
+    typingUsersByRoom: {},
+    onlineUsers: {},
+    onlineUserCount: 0,
+    roomActivity: {},
+    loadingRooms: false,
+    loadingMessages: false,
+    error: null,
+  };
+}
+
 export const initialChatState = createInitialChatState();
 
 function messageId(message) {
