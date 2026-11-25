@@ -1,4 +1,3 @@
-
 import { apiRequest, API_BASE_URL } from "./api";
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -177,4 +176,13 @@ export async function deleteUpload(id) {
       method: "DELETE",
     }
   );
+}
+
+// POST /api/developer/execute
+export async function executeCode(payload, { signal } = {}) {
+  return apiRequest("/api/developer/execute", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal,
+  });
 }
