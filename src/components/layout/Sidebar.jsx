@@ -1,5 +1,6 @@
 
 import { NavLink } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 
 function Sidebar() {
   return (
@@ -32,6 +33,16 @@ function Sidebar() {
             <span>{"</>"}</span>
             Developer Tools
           </NavLink>
+
+          <NavLink
+             to="/developer/uploads"
+             className={({ isActive }) =>
+             `sidebar-link ${isActive ? "active" : ""}`
+               }
+             >
+              <span>{"</>"}</span>
+              Developer Uploads
+            </NavLink>
 
           <a href="#saved" className="sidebar-link">
             <span>☆</span>

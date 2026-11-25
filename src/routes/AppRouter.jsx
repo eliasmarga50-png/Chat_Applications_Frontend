@@ -7,6 +7,7 @@ import {
 } from "react-router-dom";
 
 import { useAuth } from "../context/useAuth";
+import DeveloperUploads from "../pages/DeveloperUploads";
 
 import Login from "../pages/Login";
 import Register from "../pages/Register";
@@ -44,6 +45,10 @@ function AppRouter() {
             path="/developer"
             element={<Developer />}
           />
+          <Route
+            path="/developer/uploads"
+            element={<DeveloperUploads />}
+         />
         </Route>
 
         <Route path="*" element={<NotFound />} />
