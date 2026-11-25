@@ -4,9 +4,9 @@ import ReactDOM from "react-dom/client";
 
 import App from "./App";
 
-import { AuthProvider } from "./context/AuthContext";
-import { SocketProvider } from "./context/SocketContext";
-import { ChatProvider } from "./context/ChatContext";
+import { AuthProvider } from "./context/AuthProvider";
+import { SocketProvider } from "./context/SocketProvider";
+import { ChatProvider } from "./context/ChatProvider";
 
 import "./App.css";
 
