@@ -1,3 +1,6 @@
+
+import { NavLink } from "react-router-dom";
+
 function Sidebar() {
   return (
     <aside className="sidebar">
@@ -10,10 +13,25 @@ function Sidebar() {
             Discover
           </a>
 
-          <a href="#messages" className="sidebar-link active">
+          <NavLink
+            to="/chat"
+            className={({ isActive }) =>
+              `sidebar-link ${isActive ? "active" : ""}`
+            }
+          >
             <span>▤</span>
             Messages
-          </a>
+          </NavLink>
+
+          <NavLink
+            to="/developer"
+            className={({ isActive }) =>
+              `sidebar-link ${isActive ? "active" : ""}`
+            }
+          >
+            <span>{"</>"}</span>
+            Developer Tools
+          </NavLink>
 
           <a href="#saved" className="sidebar-link">
             <span>☆</span>
