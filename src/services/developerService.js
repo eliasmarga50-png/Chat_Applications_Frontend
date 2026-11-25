@@ -2,7 +2,19 @@
 import { apiFetch, apiRequest } from "./api";
 
 // Execute JavaScript on the backend's isolated code runner.
+const MAX_CODE_LENGTH = 10000;
+
 export function executeCode(code, { signal } = {}) {
+  if (typeof code !== "string" || !code.trim()) {
+    throw new Error("Please enter some JavaScript code.");
+  }
+
+  if (code.length > MAX_CODE_LENGTH) {
+    throw new Error(
+      `Code cannot exceed ${MAX_CODE_LENGTH.toLocaleString()} characters.`
+    );
+  }
+
   return apiRequest("/api/execute", {
     method: "POST",
     body: JSON.stringify({
