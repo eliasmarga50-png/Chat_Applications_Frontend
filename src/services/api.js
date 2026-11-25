@@ -1,18 +1,18 @@
+
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
 if (!API_BASE_URL) {
   throw new Error("VITE_API_URL is not configured.");
 }
 
-export async function apiRequest(endpoint, options = {}) {
-  const token = sessionStorage.getItem("token");
-
+function createRequestHeaders(options = {}) {
   const headers = {
     Accept: "application/json",
     ...options.headers,
   };
 
   // JSON requests should have a content type.
+  // File and Blob requests retain their supplied MIME type.
   if (
     options.body &&
     typeof options.body === "string"
@@ -20,44 +20,62 @@ export async function apiRequest(endpoint, options = {}) {
     headers["Content-Type"] ??= "application/json";
   }
 
-  // Attach JWT if the user is authenticated.
+  const token = sessionStorage.getItem("token");
+
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(
-    `${API_BASE_URL}${endpoint}`,
-    {
-      ...options,
-      headers,
-    }
-  );
+  return headers;
+}
 
-  // Safely parse the response.
-  const data = await response.json().catch(() => null);
-
-  // Handle expired/invalid authentication.
+function dispatchUnauthorized(endpoint, status) {
   if (
-    response.status === 401 &&
+    status === 401 &&
     !endpoint.startsWith("/api/auth/")
   ) {
     window.dispatchEvent(
       new Event("auth:unauthorized")
     );
   }
+}
 
-  // Handle HTTP errors.
+async function createHttpError(response) {
+  const data = await response.json().catch(() => null);
+
+  const error = new Error(
+    data?.error?.message ||
+      "Something went wrong."
+  );
+
+  error.status = response.status;
+  error.code = data?.error?.code;
+
+  return error;
+}
+
+// Shared authenticated fetch for JSON, binary uploads, and downloads.
+export async function apiFetch(endpoint, options = {}) {
+  const response = await fetch(
+    `${API_BASE_URL}${endpoint}`,
+    {
+      ...options,
+      headers: createRequestHeaders(options),
+    }
+  );
+
+  dispatchUnauthorized(endpoint, response.status);
+
   if (!response.ok) {
-    const error = new Error(
-      data?.error?.message ||
-        "Something went wrong."
-    );
-
-    error.status = response.status;
-    error.code = data?.error?.code;
-
-    throw error;
+    throw await createHttpError(response);
   }
 
-  return data;
+  return response;
+}
+
+// Existing application services use this helper for JSON responses.
+export async function apiRequest(endpoint, options = {}) {
+  const response = await apiFetch(endpoint, options);
+
+  return response.json().catch(() => null);
 }
