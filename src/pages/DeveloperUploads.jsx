@@ -4,14 +4,21 @@ import { useNavigate } from "react-router-dom";
 
 import Navbar from "../components/layout/Navbar";
 import Sidebar from "../components/layout/Sidebar";
-import "./DeveloperUploads.css";
 import { useAuth } from "../context/useAuth";
+
 import {
   ACCEPTED_FILE_EXTENSIONS,
   MAX_UPLOAD_BYTES,
   uploadFile,
   validateUploadFile,
+  listUploads,
+  downloadUpload,
+  deleteUpload,
 } from "../services/developerService";
+
+import "./DeveloperUploads.css";
+
+const PAGE_SIZE = 10;
 
 function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -21,6 +28,12 @@ function formatFileSize(bytes) {
   }
 
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatDate(date) {
+  if (!date) return "Unknown date";
+
+  return new Date(date).toLocaleString();
 }
 
 function DeveloperUploads() {
@@ -37,6 +50,68 @@ function DeveloperUploads() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
 
+  const [uploads, setUploads] = useState([]);
+  const [loadingUploads, setLoadingUploads] = useState(true);
+  const [uploadsError, setUploadsError] = useState("");
+  const [managementError, setManagementError] = useState("");
+
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: PAGE_SIZE,
+    total: 0,
+    totalPages: 0,
+  });
+
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+
+  // Load the authenticated user's upload history.
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadUploads() {
+      setLoadingUploads(true);
+      setUploadsError("");
+
+      try {
+        const response = await listUploads({
+          page,
+          limit: PAGE_SIZE,
+          signal: controller.signal,
+        });
+
+        setUploads(response.uploads ?? []);
+        setPagination(response.pagination);
+
+        if (
+          response.pagination?.totalPages > 0 &&
+          page > response.pagination.totalPages
+        ) {
+          setPage(response.pagination.totalPages);
+        }
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          setUploadsError(
+            error.message || "Could not load uploaded files."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingUploads(false);
+        }
+      }
+    }
+
+    loadUploads();
+
+    return () => {
+      controller.abort();
+    };
+  }, [page, refreshKey]);
+
+  // Cancel an active upload if the page is unmounted.
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
@@ -97,14 +172,19 @@ function DeveloperUploads() {
 
     setIsUploading(true);
     setUploadError("");
+    setManagementError("");
 
     try {
       const response = await uploadFile(selectedFile, {
         signal: controller.signal,
       });
 
-      setUploadedFile(response?.upload ?? null);
+      setUploadedFile(response.upload ?? null);
       setSelectedFile(null);
+
+      // Refresh the history so the new upload appears.
+      setPage(1);
+      setRefreshKey((current) => current + 1);
     } catch (error) {
       if (error.name === "AbortError") {
         setUploadError("Upload cancelled.");
@@ -146,6 +226,66 @@ function DeveloperUploads() {
     setUploadedFile(null);
   }
 
+  async function handleDownload(upload) {
+    if (downloadingId) return;
+
+    setDownloadingId(upload.id);
+    setManagementError("");
+
+    try {
+      await downloadUpload(upload);
+    } catch (error) {
+      setManagementError(
+        error.message || "Download failed."
+      );
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  async function handleDelete(upload) {
+    if (deletingId || downloadingId) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${upload.originalName}"? This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(upload.id);
+    setManagementError("");
+
+    try {
+      await deleteUpload(upload.id);
+
+      if (uploadedFile?.id === upload.id) {
+        setUploadedFile(null);
+      }
+
+      setRefreshKey((current) => current + 1);
+    } catch (error) {
+      setManagementError(
+        error.message || "The file could not be deleted."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function handleRefresh() {
+    setRefreshKey((current) => current + 1);
+  }
+
+  function handlePreviousPage() {
+    setPage((current) => Math.max(1, current - 1));
+  }
+
+  function handleNextPage() {
+    setPage((current) =>
+      Math.min(pagination.totalPages, current + 1)
+    );
+  }
+
   return (
     <div className="app">
       <div className="session-bar">
@@ -170,11 +310,11 @@ function DeveloperUploads() {
                 DEVCONNECT / DEVELOPER TOOLS
               </p>
 
-              <h1>File Uploads</h1>
+              <h1>File Management</h1>
 
               <p>
-                Upload source code, text, log and JSON files
-                to your developer workspace.
+                Upload, browse, download, and manage your
+                developer files.
               </p>
             </div>
 
@@ -183,14 +323,15 @@ function DeveloperUploads() {
             </span>
           </header>
 
+          {/* Upload section */}
           <section className="upload-card">
             <div className="upload-card-heading">
               <div>
-                <h2>Select a file</h2>
+                <h2>Upload a new file</h2>
 
                 <p>
-                  Your file is uploaded securely using your
-                  authenticated session.
+                  Upload source code, text, log, and JSON files
+                  to your developer workspace.
                 </p>
               </div>
             </div>
@@ -325,6 +466,7 @@ function DeveloperUploads() {
             )}
           </section>
 
+          {/* Latest upload result */}
           {uploadedFile && (
             <section
               className="upload-result-card"
@@ -371,37 +513,198 @@ function DeveloperUploads() {
 
                 <div>
                   <dt>Uploaded</dt>
-                  <dd>
-                    {uploadedFile.createdAt
-                      ? new Date(
-                          uploadedFile.createdAt
-                        ).toLocaleString()
-                      : "Just now"}
-                  </dd>
+                  <dd>{formatDate(uploadedFile.createdAt)}</dd>
                 </div>
               </dl>
             </section>
           )}
 
+          {/* Uploaded files management */}
+          <section className="uploaded-files-section">
+            <div className="uploaded-files-heading">
+              <div>
+                <h2>Your uploaded files</h2>
+
+                <p>
+                  Files saved to your account are loaded from
+                  the backend.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="refresh-uploads-button"
+                onClick={handleRefresh}
+                disabled={loadingUploads}
+              >
+                ↻ Refresh
+              </button>
+            </div>
+
+            {uploadsError && (
+              <div
+                className="upload-alert upload-alert-error"
+                role="alert"
+              >
+                {uploadsError}
+              </div>
+            )}
+
+            {managementError && (
+              <div
+                className="upload-alert upload-alert-error"
+                role="alert"
+              >
+                {managementError}
+              </div>
+            )}
+
+            {loadingUploads ? (
+              <div className="uploads-loading">
+                <span className="upload-spinner" />
+                Loading your files…
+              </div>
+            ) : uploads.length === 0 ? (
+              <div className="uploads-empty-state">
+                <span className="uploads-empty-icon">▤</span>
+
+                <h3>No uploaded files yet</h3>
+
+                <p>
+                  Files you upload will appear here.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="uploads-table-wrapper">
+                  <table className="uploads-table">
+                    <thead>
+                      <tr>
+                        <th>File</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                        <th>Uploaded</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {uploads.map((upload) => (
+                        <tr key={upload.id}>
+                          <td>
+                            <div className="upload-table-filename">
+                              <span className="upload-table-file-icon">
+                                FILE
+                              </span>
+
+                              <span>{upload.originalName}</span>
+                            </div>
+                          </td>
+
+                          <td>{upload.mimeType}</td>
+
+                          <td>{formatFileSize(upload.size)}</td>
+
+                          <td>{formatDate(upload.createdAt)}</td>
+
+                          <td>
+                            <div className="upload-row-actions">
+                              <button
+                                type="button"
+                                className="download-upload-button"
+                                onClick={() =>
+                                  handleDownload(upload)
+                                }
+                                disabled={
+                                  downloadingId !== null ||
+                                  deletingId !== null
+                                }
+                              >
+                                {downloadingId === upload.id
+                                  ? "Downloading…"
+                                  : "Download"}
+                              </button>
+
+                              <button
+                                type="button"
+                                className="delete-upload-button"
+                                onClick={() =>
+                                  handleDelete(upload)
+                                }
+                                disabled={
+                                  deletingId !== null ||
+                                  downloadingId !== null
+                                }
+                              >
+                                {deletingId === upload.id
+                                  ? "Deleting…"
+                                  : "Delete"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="uploads-pagination">
+                  <span>
+                    {pagination.total} total file
+                    {pagination.total === 1 ? "" : "s"}
+                    {" · "}
+                    Page {pagination.page} of{" "}
+                    {Math.max(pagination.totalPages, 1)}
+                  </span>
+
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handlePreviousPage}
+                      disabled={page <= 1 || loadingUploads}
+                    >
+                      Previous
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleNextPage}
+                      disabled={
+                        page >= pagination.totalPages ||
+                        loadingUploads
+                      }
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+
           <section className="upload-guidance">
-            <h2>Before uploading</h2>
+            <h2>File management information</h2>
 
             <ul>
               <li>
-                Only the file types listed above are supported.
+                Your upload history is retrieved from MongoDB.
               </li>
 
               <li>
-                Files must not be empty and cannot exceed 100 MB.
+                Only files belonging to your account are listed.
               </li>
 
               <li>
-                Uploads require an active DevConnect login session.
+                Downloads require an authenticated session.
               </li>
 
               <li>
-                The server stores the file bytes and upload
-                metadata separately.
+                Deleting a file removes its stored file and
+                database metadata.
+              </li>
+
+              <li>
+                The maximum upload size is 100 MB.
               </li>
             </ul>
           </section>

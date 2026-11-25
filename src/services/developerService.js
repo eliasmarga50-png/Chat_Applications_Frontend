@@ -1,77 +1,5 @@
 
-import { apiFetch, apiRequest } from "./api";
-
-// Execute JavaScript on the backend's isolated code runner.
-const MAX_CODE_LENGTH = 10000;
-
-export function executeCode(code, { signal } = {}) {
-  if (typeof code !== "string" || !code.trim()) {
-    throw new Error("Please enter some JavaScript code.");
-  }
-
-  if (code.length > MAX_CODE_LENGTH) {
-    throw new Error(
-      `Code cannot exceed ${MAX_CODE_LENGTH.toLocaleString()} characters.`
-    );
-  }
-
-  return apiRequest("/api/execute", {
-    method: "POST",
-    body: JSON.stringify({
-      language: "javascript",
-      code,
-    }),
-    signal,
-  });
-}
-
-// Upload the File object itself.
-// Do not JSON-encode it or wrap it in FormData.
-export async function uploadFile(file, { signal } = {}) {
-  const validationError = validateUploadFile(file);
-
-  if (validationError) {
-    throw new Error(validationError);
-  }
-
-  const mimeType = getUploadMimeType(file);
-  const safeHeaderFilename = file.name.replace(/[^\x20-\x7E]/g, "_");
-
-  return apiRequest("/api/uploads", {
-    method: "POST",
-    headers: {
-      "Content-Type": mimeType,
-      "X-File-Name": safeHeaderFilename,
-    },
-    body: file,
-    signal,
-  });
-}
-// Retrieve an upload as binary data.
-export async function downloadFile(
-  uploadId,
-  { signal } = {}
-) {
-  if (!uploadId || typeof uploadId !== "string") {
-    throw new TypeError(
-      "A valid upload ID is required."
-    );
-  }
-
-  const response = await apiFetch(
-    `/api/uploads/${encodeURIComponent(uploadId)}/content`,
-    { signal }
-  );
-
-  return {
-    blob: await response.blob(),
-    contentDisposition: response.headers.get(
-      "Content-Disposition"
-    ),
-    contentType: response.headers.get("Content-Type"),
-  };
-}
-
+import { apiRequest, API_BASE_URL } from "./api";
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -103,6 +31,7 @@ export function getUploadMimeType(file) {
   }
 
   const extension = file.name.split(".").pop()?.toLowerCase();
+
   return MIME_TYPES_BY_EXTENSION[extension] ?? null;
 }
 
@@ -126,5 +55,126 @@ export function validateUploadFile(file) {
   return "";
 }
 
+// POST /api/uploads
+// Sends the original File object as raw request bytes.
+export async function uploadFile(file, { signal } = {}) {
+  const validationError = validateUploadFile(file);
 
+  if (validationError) {
+    throw new Error(validationError);
+  }
 
+  const mimeType = getUploadMimeType(file);
+
+  const safeHeaderFilename = file.name.replace(
+    /[^\x20-\x7E]/g,
+    "_"
+  );
+
+  return apiRequest("/api/uploads", {
+    method: "POST",
+    headers: {
+      "Content-Type": mimeType,
+      "X-File-Name": safeHeaderFilename,
+    },
+    body: file,
+    signal,
+  });
+}
+
+// GET /api/uploads
+export async function listUploads({
+  page = 1,
+  limit = 10,
+  signal,
+} = {}) {
+  const query = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+
+  return apiRequest(`/api/uploads?${query.toString()}`, {
+    method: "GET",
+    signal,
+  });
+}
+
+// GET /api/uploads/:id/content
+// Binary downloads must use fetch directly because apiRequest
+// expects JSON responses.
+export async function downloadUpload(upload, { signal } = {}) {
+  const token = sessionStorage.getItem("token");
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/uploads/${encodeURIComponent(
+      upload.id
+    )}/content`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "*/*",
+        ...(token
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
+      },
+      signal,
+    }
+  );
+
+  if (response.status === 401) {
+    window.dispatchEvent(
+      new Event("auth:unauthorized")
+    );
+  }
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+
+    const error = new Error(
+      data?.error?.message ||
+        "The file could not be downloaded."
+    );
+
+    error.status = response.status;
+    error.code = data?.error?.code;
+
+    throw error;
+  }
+
+  const blob = await response.blob();
+
+  const disposition = response.headers.get(
+    "Content-Disposition"
+  );
+
+  const filenameMatch = disposition?.match(
+    /filename="([^"]+)"/i
+  );
+
+  const filename =
+    filenameMatch?.[1] || upload.originalName || "download";
+
+  const objectUrl = URL.createObjectURL(blob);
+  const downloadLink = document.createElement("a");
+
+  downloadLink.href = objectUrl;
+  downloadLink.download = filename;
+
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  downloadLink.remove();
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 1000);
+}
+
+// DELETE /api/uploads/:id
+export async function deleteUpload(id) {
+  return apiRequest(
+    `/api/uploads/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
