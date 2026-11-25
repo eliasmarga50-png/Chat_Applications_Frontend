@@ -1,4 +1,5 @@
 
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useEffect,
@@ -14,28 +15,28 @@ export function SocketProvider({ children }) {
   const { token, isAuthenticated } = useAuth();
 
   const [socket, setSocket] = useState(null);
+
   const [connectionStatus, setConnectionStatus] =
     useState("disconnected");
+
   const [connectionError, setConnectionError] =
     useState(null);
 
   useEffect(() => {
     if (!isAuthenticated || !token) {
-      setSocket(null);
-      setConnectionStatus("disconnected");
-      setConnectionError(null);
-
       return undefined;
     }
 
     const newSocket = createSocket(token);
 
     function handleConnect() {
+      setSocket(newSocket);
       setConnectionStatus("connected");
       setConnectionError(null);
     }
 
     function handleDisconnect(reason) {
+      setSocket(newSocket);
       setConnectionStatus("disconnected");
 
       if (reason === "io server disconnect") {
@@ -46,6 +47,7 @@ export function SocketProvider({ children }) {
     }
 
     function handleConnectError(error) {
+      setSocket(newSocket);
       setConnectionStatus("error");
       setConnectionError(error.message);
     }
@@ -63,35 +65,33 @@ export function SocketProvider({ children }) {
     newSocket.on("connect_error", handleConnectError);
     newSocket.on("auth:expired", handleAuthExpired);
 
-    setSocket(newSocket);
-    setConnectionStatus("connecting");
-
     newSocket.connect();
 
     return () => {
       newSocket.off("connect", handleConnect);
       newSocket.off("disconnect", handleDisconnect);
-      newSocket.off(
-        "connect_error",
-        handleConnectError
-      );
-      newSocket.off(
-        "auth:expired",
-        handleAuthExpired
-      );
+      newSocket.off("connect_error", handleConnectError);
+      newSocket.off("auth:expired", handleAuthExpired);
 
       newSocket.disconnect();
-
-      setSocket((currentSocket) =>
-        currentSocket === newSocket ? null : currentSocket
-      );
     };
   }, [token, isAuthenticated]);
 
+  const activeSocket =
+    isAuthenticated && socket?.auth?.token === token
+      ? socket
+      : null;
+
   const value = {
-    socket,
-    connectionStatus,
-    connectionError,
+    socket: activeSocket,
+
+    connectionStatus: activeSocket
+      ? connectionStatus
+      : "disconnected",
+
+    connectionError: activeSocket
+      ? connectionError
+      : null,
   };
 
   return (

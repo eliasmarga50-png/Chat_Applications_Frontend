@@ -1,4 +1,4 @@
-import { createInitialChatState } from "../context/chat-context.jsx";
+import { createInitialChatState } from "../context/ChatContext";
 export const initialChatState = createInitialChatState();
 
 function messageId(message) {
