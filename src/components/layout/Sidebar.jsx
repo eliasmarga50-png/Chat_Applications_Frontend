@@ -1,5 +1,3 @@
-
-import { NavLink } from "react-router-dom";
 import { NavLink } from "react-router-dom";
 
 function Sidebar() {
@@ -35,14 +33,14 @@ function Sidebar() {
           </NavLink>
 
           <NavLink
-             to="/developer/uploads"
-             className={({ isActive }) =>
-             `sidebar-link ${isActive ? "active" : ""}`
-               }
-             >
-              <span>{"</>"}</span>
-              Developer Uploads
-            </NavLink>
+            to="/developer/uploads"
+            className={({ isActive }) =>
+              `sidebar-link ${isActive ? "active" : ""}`
+            }
+          >
+            <span>{"</>"}</span>
+            Developer Uploads
+          </NavLink>
 
           <a href="#saved" className="sidebar-link">
             <span>☆</span>
