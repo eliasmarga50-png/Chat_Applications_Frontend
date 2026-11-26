@@ -60,6 +60,8 @@ function ChatWindow({
   joinedRoomSlug,
   onRetryRoomJoin,
   onTypingChange,
+  onRetryConnection,
+  onNotify,
 }) {
   const { state } = useChat();
 
@@ -131,6 +133,18 @@ function ChatWindow({
     joinedRoomSlug === room?.slug &&
     !roomJoinError;
 
+  const connectionLabels = {
+    connected: "Connected",
+    connecting: "Connecting",
+    reconnecting: "Reconnecting",
+    disconnected: "Offline",
+    error: "Connection error",
+  };
+
+  const canRetryConnection =
+    connectionStatus === "error" ||
+    connectionStatus === "disconnected";
+
   return (
     <main className="chat-window">
       <header className="chat-header">
@@ -170,14 +184,12 @@ function ChatWindow({
           <span
             className={`socket-status socket-status-${connectionStatus}`}
             role="status"
+            aria-live="polite"
           >
             <span className="socket-status-dot" />
 
-            {connectionStatus === "connected"
-              ? "Connected"
-              : connectionStatus === "connecting"
-                ? "Connecting"
-                : "Offline"}
+            {connectionLabels[connectionStatus] ||
+              "Offline"}
           </span>
 
           <button
@@ -193,12 +205,20 @@ function ChatWindow({
         </div>
       </header>
 
-      {connectionError &&
-        connectionStatus !== "connected" && (
-          <div className="socket-notice" role="status">
-            {connectionError}
-          </div>
-        )}
+      {connectionError && !isConnected && (
+        <div className="socket-notice" role="status">
+          <span>{connectionError}</span>
+
+          {canRetryConnection && (
+            <button
+              type="button"
+              onClick={onRetryConnection}
+            >
+              Reconnect
+            </button>
+          )}
+        </div>
+      )}
 
       {roomJoinError && (
         <div
@@ -269,7 +289,7 @@ function ChatWindow({
 
         {isLoading ? (
           <div className="loading-state">
-            <div className="loading-spinner"></div>
+            <div className="loading-spinner" />
             <p>Loading messages...</p>
           </div>
         ) : error ? (
@@ -285,44 +305,24 @@ function ChatWindow({
             </button>
           </div>
         ) : messages.length > 0 ? (
-          messages.map((message, index) => {
-  const label = dateLabel(message.createdAt);
-  const showDivider = label !== previousDate;
+          messages.map((message) => {
+            const label = dateLabel(message.createdAt);
+            const showDivider = label !== previousDate;
 
-  const previousMessage = messages[index - 1];
+            previousDate = label;
 
-  const sameAuthor =
-    previousMessage?.username === message.username;
+            return (
+              <div key={message.id}>
+                {showDivider && (
+                  <div className="date-divider">
+                    <span>{label}</span>
+                  </div>
+                )}
 
-  const currentTime = new Date(message.createdAt).getTime();
-  const previousTime = previousMessage
-    ? new Date(previousMessage.createdAt).getTime()
-    : 0;
-
-  const withinFiveMinutes =
-    currentTime >= previousTime &&
-    currentTime - previousTime <= 5 * 60 * 1000;
-
-  const showHeader =
-    !sameAuthor || !withinFiveMinutes || showDivider;
-
-  previousDate = label;
-
-  return (
-    <div key={message.id}>
-      {showDivider && (
-        <div className="date-divider">
-          <span>{label}</span>
-        </div>
-      )}
-
-      <MessageItem
-        message={message}
-        showHeader={showHeader}
-      />
-    </div>
-  );
-})
+                <MessageItem message={message} />
+              </div>
+            );
+          })
         ) : (
           <div className="empty-messages">
             <div className="empty-message-icon">#</div>
@@ -348,6 +348,7 @@ function ChatWindow({
         <MessageInput
           onSendMessage={onSendMessage}
           onTypingChange={onTypingChange}
+          onNotify={onNotify}
           disabled={!roomReady}
         />
       )}
