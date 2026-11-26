@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState,
 } from "react";
@@ -23,25 +24,18 @@ export function SocketProvider({ children }) {
       return undefined;
     }
 
-    let isCancelled = false;
     const newSocket = createSocket(token);
-
-    // Expose the socket and initial connecting state asynchronously
-    // so ESLint's set-state-in-effect rule is satisfied.
-    queueMicrotask(() => {
-      if (!isCancelled) {
-        setSocket(newSocket);
-        setConnectionStatus("connecting");
-        setConnectionError(null);
-      }
-    });
+    const manager = newSocket.io;
 
     function handleConnect() {
+      setSocket(newSocket);
       setConnectionStatus("connected");
       setConnectionError(null);
     }
 
     function handleDisconnect(reason) {
+      setSocket(newSocket);
+
       if (newSocket.active) {
         setConnectionStatus("reconnecting");
         setConnectionError(
@@ -64,6 +58,8 @@ export function SocketProvider({ children }) {
     }
 
     function handleConnectError(error) {
+      setSocket(newSocket);
+
       if (newSocket.active) {
         setConnectionStatus("reconnecting");
         setConnectionError(
@@ -78,6 +74,7 @@ export function SocketProvider({ children }) {
     }
 
     function handleReconnectAttempt() {
+      setSocket(newSocket);
       setConnectionStatus("reconnecting");
       setConnectionError(
         "Connection lost. Reconnecting..."
@@ -99,8 +96,6 @@ export function SocketProvider({ children }) {
       newSocket.disconnect();
     }
 
-    const manager = newSocket.io;
-
     newSocket.on("connect", handleConnect);
     newSocket.on("disconnect", handleDisconnect);
     newSocket.on("connect_error", handleConnectError);
@@ -119,8 +114,6 @@ export function SocketProvider({ children }) {
     newSocket.connect();
 
     return () => {
-      isCancelled = true;
-
       newSocket.off("connect", handleConnect);
       newSocket.off("disconnect", handleDisconnect);
       newSocket.off("connect_error", handleConnectError);
@@ -141,11 +134,13 @@ export function SocketProvider({ children }) {
   }, [token, isAuthenticated]);
 
   const activeSocket =
-    isAuthenticated && socket?.auth?.token === token
+    isAuthenticated &&
+    token &&
+    socket?.auth?.token === token
       ? socket
       : null;
 
-  function retryConnection() {
+  const retryConnection = useCallback(() => {
     if (!activeSocket || activeSocket.connected) {
       return;
     }
@@ -154,14 +149,16 @@ export function SocketProvider({ children }) {
     setConnectionError(null);
 
     activeSocket.connect();
-  }
+  }, [activeSocket]);
 
   const value = {
     socket: activeSocket,
 
     connectionStatus: activeSocket
       ? connectionStatus
-      : "disconnected",
+      : isAuthenticated && token
+        ? "connecting"
+        : "disconnected",
 
     connectionError: activeSocket
       ? connectionError
