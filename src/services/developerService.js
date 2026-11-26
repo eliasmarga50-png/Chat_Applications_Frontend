@@ -1,3 +1,4 @@
+
 import { apiRequest, API_BASE_URL } from "./api";
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -55,29 +56,135 @@ export function validateUploadFile(file) {
 }
 
 // POST /api/uploads
-// Sends the original File object as raw request bytes.
-export async function uploadFile(file, { signal } = {}) {
+// Sends the original file bytes and reports actual browser upload progress.
+export function uploadFile(
+  file,
+  { signal, onProgress } = {}
+) {
   const validationError = validateUploadFile(file);
 
   if (validationError) {
-    throw new Error(validationError);
+    return Promise.reject(new Error(validationError));
+  }
+
+  if (signal?.aborted) {
+    return Promise.reject(
+      new DOMException("Upload cancelled.", "AbortError")
+    );
   }
 
   const mimeType = getUploadMimeType(file);
-
-  const safeHeaderFilename = file.name.replace(
+  const safeFilename = file.name.replace(
     /[^\x20-\x7E]/g,
     "_"
   );
 
-  return apiRequest("/api/uploads", {
-    method: "POST",
-    headers: {
-      "Content-Type": mimeType,
-      "X-File-Name": safeHeaderFilename,
-    },
-    body: file,
-    signal,
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let settled = false;
+
+    function cleanup() {
+      signal?.removeEventListener("abort", handleAbort);
+    }
+
+    function fail(error) {
+      if (settled) return;
+
+      settled = true;
+      cleanup();
+      reject(error);
+    }
+
+    function handleAbort() {
+      xhr.abort();
+    }
+
+    xhr.open("POST", `${API_BASE_URL}/api/uploads`);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("Content-Type", mimeType);
+    xhr.setRequestHeader("X-File-Name", safeFilename);
+
+    const token = sessionStorage.getItem("token");
+
+    if (token) {
+      xhr.setRequestHeader(
+        "Authorization",
+        `Bearer ${token}`
+      );
+    }
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable) return;
+
+      onProgress?.({
+        percentage: Math.round(
+          (event.loaded / event.total) * 100
+        ),
+        loaded: event.loaded,
+        total: event.total,
+      });
+    });
+
+    xhr.addEventListener("load", () => {
+      let data = null;
+
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        data = null;
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (settled) return;
+
+        settled = true;
+        cleanup();
+        resolve(data);
+        return;
+      }
+
+      if (xhr.status === 401) {
+        window.dispatchEvent(
+          new Event("auth:unauthorized")
+        );
+      }
+
+      const error = new Error(
+        data?.error?.message ||
+          "The file could not be uploaded."
+      );
+
+      error.status = xhr.status;
+      error.code = data?.error?.code;
+
+      fail(error);
+    });
+
+    xhr.addEventListener("error", () => {
+      fail(
+        new Error(
+          "Network error. Check your connection and try again."
+        )
+      );
+    });
+
+    xhr.addEventListener("abort", () => {
+      fail(
+        new DOMException("Upload cancelled.", "AbortError")
+      );
+    });
+
+    xhr.addEventListener("timeout", () => {
+      fail(
+        new Error("The upload timed out. Please try again.")
+      );
+    });
+
+    signal?.addEventListener("abort", handleAbort, {
+      once: true,
+    });
+
+    xhr.send(file);
   });
 }
 
@@ -99,8 +206,6 @@ export async function listUploads({
 }
 
 // GET /api/uploads/:id/content
-// Binary downloads must use fetch directly because apiRequest
-// expects JSON responses.
 export async function downloadUpload(upload, { signal } = {}) {
   const token = sessionStorage.getItem("token");
 
@@ -151,7 +256,9 @@ export async function downloadUpload(upload, { signal } = {}) {
   );
 
   const filename =
-    filenameMatch?.[1] || upload.originalName || "download";
+    filenameMatch?.[1] ||
+    upload.originalName ||
+    "download";
 
   const objectUrl = URL.createObjectURL(blob);
   const downloadLink = document.createElement("a");
@@ -178,11 +285,15 @@ export async function deleteUpload(id) {
   );
 }
 
-// POST /api/developer/execute
-export async function executeCode(payload, { signal } = {}) {
-  return apiRequest("/api/developer/execute", {
+// POST /api/execute
+// Backend request body: { code, language: "javascript" }
+export async function executeCode(code, { signal } = {}) {
+  return apiRequest("/api/execute", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      code,
+      language: "javascript",
+    }),
     signal,
   });
 }
