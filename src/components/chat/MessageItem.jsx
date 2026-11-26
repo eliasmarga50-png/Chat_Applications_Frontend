@@ -1,4 +1,6 @@
 
+import { memo } from "react";
+
 function MessageItem({ message, showHeader = true }) {
   const displayName =
     message.displayName || message.username || "Unknown";
@@ -113,4 +115,4 @@ function MessageItem({ message, showHeader = true }) {
   );
 }
 
-export default MessageItem;
+export default memo(MessageItem);

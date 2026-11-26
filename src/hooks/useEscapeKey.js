@@ -1,13 +1,14 @@
-
 import { useEffect } from "react";
 
-function useEscapeKey(onEscape, enabled = true) {
+function useEscapeKey(enabled, onEscape) {
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!enabled || typeof onEscape !== "function") {
+      return undefined;
+    }
 
     function handleKeyDown(event) {
       if (event.key === "Escape") {
-        onEscape?.();
+        onEscape();
       }
     }
 
@@ -16,7 +17,7 @@ function useEscapeKey(onEscape, enabled = true) {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onEscape, enabled]);
+  }, [enabled, onEscape]);
 }
 
 export default useEscapeKey;

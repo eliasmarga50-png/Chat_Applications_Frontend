@@ -1,10 +1,11 @@
+
 import { Link } from "react-router-dom";
 
 import LoginForm from "../components/auth/LoginForm";
 
 function Login() {
   return (
-    <main className="auth-page">
+    <main id="main-content" className="auth-page" tabIndex={-1}>
       <div className="auth-card">
         <div className="auth-brand">
           <h1>DevConnect</h1>

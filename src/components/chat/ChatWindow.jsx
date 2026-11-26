@@ -1,3 +1,4 @@
+
 import {
   useLayoutEffect,
   useMemo,
@@ -146,7 +147,7 @@ function ChatWindow({
     connectionStatus === "disconnected";
 
   return (
-    <main className="chat-window">
+    <main id="main-content" className="chat-window" tabIndex={-1}>
       <header className="chat-header">
         <div>
           <div className="chat-room-title">

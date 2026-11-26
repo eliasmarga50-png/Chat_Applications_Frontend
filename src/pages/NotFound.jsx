@@ -1,3 +1,4 @@
+
 import { Link } from "react-router-dom";
 
 import { useAuth } from "../context/useAuth";
@@ -6,7 +7,7 @@ function NotFound() {
   const { isAuthenticated } = useAuth();
 
   return (
-    <main className="not-found-page">
+    <main id="main-content" className="not-found-page" tabIndex={-1}>
       <div className="not-found-content">
         <h1>404</h1>
 

@@ -23,7 +23,7 @@ import {
 } from "../services/developerService";
 
 import "./DeveloperUploads.css";
-import "./DeveloperCommit4.css";
+import useEscapeKey from "../hooks/useEscapeKey";
 
 const PAGE_SIZE = 10;
 
@@ -89,6 +89,8 @@ function DeveloperUploads() {
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [mobilePanel, setMobilePanel] = useState(false);
+
+  useEscapeKey(mobilePanel, () => setMobilePanel(false));
 
   // Load the authenticated user's upload history.
   useEffect(() => {
@@ -411,7 +413,7 @@ function DeveloperUploads() {
           onClose={() => setMobilePanel(false)}
         />
 
-        <main className="developer-upload-page">
+        <main id="main-content" className="developer-upload-page" tabIndex={-1}>
           <header className="developer-upload-heading">
             <div>
               <p className="developer-upload-eyebrow">

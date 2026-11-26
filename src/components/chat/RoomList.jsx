@@ -1,5 +1,10 @@
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import { useState } from "react";
 import { useChat } from "../../hooks/useChat";
 
 function RoomList({
@@ -20,11 +25,49 @@ function RoomList({
 
   const [search, setSearch] = useState("");
 
-  const filteredRooms = rooms.filter((room) =>
-    `${room.name} ${room.description || ""} ${(room.tags || []).join(" ")}`
-      .toLowerCase()
-      .includes(search.trim().toLowerCase())
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 760px)").matches
   );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(
+      "(max-width: 760px)"
+    );
+
+    function updateViewport() {
+      setIsMobileViewport(mediaQuery.matches);
+    }
+
+    updateViewport();
+
+    mediaQuery.addEventListener(
+      "change",
+      updateViewport
+    );
+
+    return () => {
+      mediaQuery.removeEventListener(
+        "change",
+        updateViewport
+      );
+    };
+  }, []);
+
+  const filteredRooms = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return rooms;
+    }
+
+    return rooms.filter((room) =>
+      `${room.name} ${room.description || ""} ${(room.tags || []).join(" ")}`
+        .toLowerCase()
+        .includes(normalizedSearch)
+    );
+  }, [rooms, search]);
 
   const roomListClass = [
     "room-list",
@@ -33,12 +76,16 @@ function RoomList({
     .filter(Boolean)
     .join(" ");
 
+  const shouldHideFromAccessibility =
+    isMobileViewport && !isMobileOpen;
+
   return (
     <section
       id="channel-navigation"
       className={roomListClass}
       aria-label="Channel navigation"
-      aria-hidden={!isMobileOpen && undefined}
+      aria-hidden={shouldHideFromAccessibility}
+      inert={shouldHideFromAccessibility}
     >
       <div className="room-list-header">
         <div>
@@ -88,7 +135,10 @@ function RoomList({
 
       <div className="rooms">
         {loading ? (
-          <p className="room-list-status">
+          <p
+            className="room-list-status"
+            role="status"
+          >
             Loading channels...
           </p>
         ) : error ? (
@@ -111,11 +161,16 @@ function RoomList({
                 room.id === activeRoomId ? "selected" : ""
               }`}
               aria-current={
-                room.id === activeRoomId ? "page" : undefined
+                room.id === activeRoomId
+                  ? "page"
+                  : undefined
               }
               onClick={() => onSelectRoom(room.id)}
             >
-              <div className="room-icon">
+              <div
+                className="room-icon"
+                aria-hidden="true"
+              >
                 {room.icon}
               </div>
 
@@ -144,4 +199,4 @@ function RoomList({
   );
 }
 
-export default RoomList;
+export default memo(RoomList);

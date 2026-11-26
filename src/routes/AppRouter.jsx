@@ -1,4 +1,3 @@
-
 import {
   lazy,
   Suspense,
@@ -45,8 +44,14 @@ function RouteAccessibility() {
       { match: "/login", title: "Log in" },
       { match: "/register", title: "Create account" },
       { match: "/chat", title: "Chat" },
-      { match: "/developer/uploads", title: "Developer uploads" },
-      { match: "/developer", title: "JavaScript Playground" },
+      {
+        match: "/developer/uploads",
+        title: "Developer uploads",
+      },
+      {
+        match: "/developer",
+        title: "JavaScript Playground",
+      },
     ];
 
     const current = routeTitles.find(({ match }) =>
@@ -57,12 +62,30 @@ function RouteAccessibility() {
       ? `${current.title} | DevConnect`
       : "DevConnect";
 
-    const main = document.getElementById("main-content");
+    const frame = window.requestAnimationFrame(() => {
+      const main = document.getElementById("main-content");
 
-    if (main && location.hash === "") {
-      main.setAttribute("tabindex", "-1");
-    }
-  }, [location.pathname, location.hash]);
+      main?.focus({
+        preventScroll: true,
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [location.pathname]);
+
+  const announcement = location.pathname.startsWith("/chat")
+    ? "Chat page"
+    : location.pathname.startsWith("/developer/uploads")
+      ? "Developer uploads page"
+      : location.pathname.startsWith("/developer")
+        ? "JavaScript playground page"
+        : location.pathname.startsWith("/register")
+          ? "Registration page"
+          : location.pathname.startsWith("/login")
+            ? "Login page"
+            : "Page changed";
 
   return (
     <div
@@ -71,65 +94,91 @@ function RouteAccessibility() {
       aria-atomic="true"
       key={location.pathname}
     >
-      {location.pathname.startsWith("/chat")
-        ? "Chat page"
-        : location.pathname.startsWith("/developer/uploads")
-          ? "Developer uploads page"
-          : location.pathname.startsWith("/developer")
-            ? "JavaScript playground page"
-            : location.pathname.startsWith("/register")
-              ? "Registration page"
-              : location.pathname.startsWith("/login")
-                ? "Login page"
-                : "Page changed"}
+      {announcement}
     </div>
   );
 }
 
 function RouteLoadingFallback() {
   return (
-    <main className="route-loading" aria-live="polite">
-      <span className="loading-spinner" aria-hidden="true" />
+    <main
+      id="main-content"
+      className="route-loading"
+      tabIndex={-1}
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span
+        className="loading-spinner"
+        aria-hidden="true"
+      />
+
       <p>Loading page...</p>
     </main>
   );
 }
 
 function AppRoutes() {
+  const location = useLocation();
+
   return (
     <>
-      <a className="skip-to-content" href="#main-content">
+      <a
+        className="skip-to-content"
+        href="#main-content"
+      >
         Skip to main content
       </a>
 
       <RouteAccessibility />
 
-      <ErrorBoundary>
-        <Suspense fallback={<RouteLoadingFallback />}>
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <ErrorBoundary key={location.pathname}>
           <Routes>
-            <Route path="/" element={<HomeRedirect />} />
+            <Route
+              path="/"
+              element={<HomeRedirect />}
+            />
 
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route
+              path="/login"
+              element={<Login />}
+            />
+
+            <Route
+              path="/register"
+              element={<Register />}
+            />
 
             <Route element={<ProtectedRoute />}>
-              <Route path="/chat" element={<Chat />} />
-              <Route path="/chat/:slug" element={<Chat />} />
+              <Route
+                path="/chat"
+                element={<Chat />}
+              />
+
+              <Route
+                path="/chat/:slug"
+                element={<Chat />}
+              />
 
               <Route
                 path="/developer"
                 element={<Developer />}
               />
+
               <Route
                 path="/developer/uploads"
                 element={<DeveloperUploads />}
               />
             </Route>
 
-            <Route path="*" element={<NotFound />} />
+            <Route
+              path="*"
+              element={<NotFound />}
+            />
           </Routes>
-        </Suspense>
-      </ErrorBoundary>
+        </ErrorBoundary>
+      </Suspense>
     </>
   );
 }

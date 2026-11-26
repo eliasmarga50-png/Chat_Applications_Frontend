@@ -14,7 +14,7 @@ import { useAuth } from "../context/useAuth";
 import { executeCode } from "../services/developerService";
 
 import "./Developer.css";
-import "./DeveloperCommit4.css";
+import useEscapeKey from "../hooks/useEscapeKey";
 
 const MAX_CODE_LENGTH = 10000;
 const REQUEST_TIMEOUT_MS = 15000;
@@ -45,6 +45,8 @@ function Developer() {
   const [isRunning, setIsRunning] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState("");
   const [mobilePanel, setMobilePanel] = useState(false);
+
+  useEscapeKey(mobilePanel, () => setMobilePanel(false));
 
   const textareaRef = useRef(null);
   const lineNumbersRef = useRef(null);
@@ -282,7 +284,7 @@ function Developer() {
           onClose={() => setMobilePanel(false)}
         />
 
-        <main className="developer-workspace">
+        <main id="main-content" className="developer-workspace" tabIndex={-1}>
           <header className="developer-header">
             <div>
               <p className="developer-eyebrow">

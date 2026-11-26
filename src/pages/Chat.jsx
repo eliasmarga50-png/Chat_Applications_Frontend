@@ -1,3 +1,4 @@
+
 import {
   useCallback,
   useEffect,
@@ -14,6 +15,7 @@ import Sidebar from "../components/layout/Sidebar";
 import RoomList from "../components/chat/RoomList";
 import ChatWindow from "../components/chat/ChatWindow";
 import NotificationToast from "../components/chat/NotificationToast";
+import useEscapeKey from "../hooks/useEscapeKey";
 
 import { useAuth } from "../context/useAuth";
 import { useSocket } from "../hooks/useSocket";
@@ -106,6 +108,8 @@ function Chat() {
   const closeMobilePanel = useCallback(() => {
     setMobilePanel(null);
   }, []);
+
+  useEscapeKey(Boolean(mobilePanel), closeMobilePanel);
 
   const notify = useCallback((type, message) => {
     setNotification({
