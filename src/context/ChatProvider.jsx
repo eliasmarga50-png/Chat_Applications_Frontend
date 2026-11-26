@@ -1,5 +1,5 @@
 
-import { useReducer } from "react";
+import { useMemo, useReducer } from "react";
 
 import { ChatContext } from "./ChatContext";
 
@@ -14,10 +14,13 @@ export function ChatProvider({ children }) {
     initialChatState
   );
 
-  const value = {
-    state,
-    dispatch,
-  };
+  const value = useMemo(
+    () => ({
+      state,
+      dispatch,
+    }),
+    [state]
+  );
 
   return (
     <ChatContext.Provider value={value}>
