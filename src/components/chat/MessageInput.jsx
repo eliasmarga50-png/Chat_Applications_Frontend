@@ -1,13 +1,16 @@
-
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 const MAX_MESSAGE_LENGTH = 4000;
 const TYPING_IDLE_MS = 1500;
 
-
 function MessageInput({
   onSendMessage,
   onTypingChange,
+  onNotify,
   disabled = false,
 }) {
   const [draft, setDraft] = useState("");
@@ -19,14 +22,12 @@ function MessageInput({
   const remainingCharacters =
     MAX_MESSAGE_LENGTH - draft.length;
 
-
   function stopTypingTimer() {
     if (typingTimerRef.current) {
       clearTimeout(typingTimerRef.current);
       typingTimerRef.current = null;
     }
   }
-
 
   function handleChange(event) {
     const value = event.target.value;
@@ -50,7 +51,6 @@ function MessageInput({
       }, TYPING_IDLE_MS);
     }
   }
-
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -83,18 +83,25 @@ function MessageInput({
       // Wait for the backend acknowledgement.
       await onSendMessage(trimmedMessage);
 
-      // Only clear the draft after successful acknowledgement.
+      // Clear the draft only after successful acknowledgement.
       setDraft("");
-    } catch (sendError) {
-      setError(
-        sendError.message ||
-          "Message could not be sent. Try again."
+
+      onNotify?.(
+        "success",
+        "Message sent successfully."
       );
+    } catch (sendError) {
+      const errorMessage =
+        sendError.message ||
+        "Message could not be sent. Try again.";
+
+      setError(errorMessage);
+
+      onNotify?.("error", errorMessage);
     } finally {
       setSending(false);
     }
   }
-
 
   function handleKeyDown(event) {
     if (
@@ -106,15 +113,12 @@ function MessageInput({
     }
   }
 
-
-  // Stop the typing timer and typing state on unmount.
   useEffect(() => {
     return () => {
       stopTypingTimer();
       onTypingChange?.(false);
     };
   }, [onTypingChange]);
-
 
   return (
     <div className="message-input-container">
@@ -161,7 +165,11 @@ function MessageInput({
           <button
             className="send-button"
             type="submit"
-            disabled={!draft.trim() || disabled || sending}
+            disabled={
+              !draft.trim() ||
+              disabled ||
+              sending
+            }
             aria-label="Send message"
           >
             {sending ? "…" : "↑"}
