@@ -8,7 +8,7 @@ import { AuthProvider } from "./context/AuthProvider";
 import { SocketProvider } from "./context/SocketProvider";
 import { ChatProvider } from "./context/ChatProvider";
 
-import "./App.css";
+import "./index.css";
 
 ReactDOM.createRoot(
   document.getElementById("root")
