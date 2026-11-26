@@ -1,5 +1,10 @@
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import { useNavigate } from "react-router-dom";
 
 import Navbar from "../components/layout/Navbar";
@@ -9,6 +14,7 @@ import { useAuth } from "../context/useAuth";
 import { executeCode } from "../services/developerService";
 
 import "./Developer.css";
+import "./DeveloperCommit4.css";
 
 const MAX_CODE_LENGTH = 10000;
 const REQUEST_TIMEOUT_MS = 15000;
@@ -37,15 +43,26 @@ function Developer() {
   const [execution, setExecution] = useState(null);
   const [requestError, setRequestError] = useState("");
   const [isRunning, setIsRunning] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState("");
+  const [mobilePanel, setMobilePanel] = useState(false);
 
+  const textareaRef = useRef(null);
+  const lineNumbersRef = useRef(null);
   const controllerRef = useRef(null);
   const timeoutRef = useRef(null);
   const requestTimedOutRef = useRef(false);
+  const copyTimerRef = useRef(null);
+
+  const lines = code.split("\n");
 
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
         window.clearTimeout(timeoutRef.current);
+      }
+
+      if (copyTimerRef.current) {
+        window.clearTimeout(copyTimerRef.current);
       }
 
       controllerRef.current?.abort();
@@ -56,16 +73,16 @@ function Developer() {
     if (isRunning) return;
 
     if (!code.trim()) {
-      setRequestError("Please enter some JavaScript code.");
       setExecution(null);
+      setRequestError("Please enter some JavaScript code.");
       return;
     }
 
     if (code.length > MAX_CODE_LENGTH) {
+      setExecution(null);
       setRequestError(
         `Your code exceeds the ${MAX_CODE_LENGTH.toLocaleString()} character limit.`
       );
-      setExecution(null);
       return;
     }
 
@@ -96,17 +113,19 @@ function Developer() {
         );
       } else if (error.name === "AbortError") {
         return;
-      } else if (error.status === 429) {
-        setRequestError(
-          "Execution limit reached. Please wait before running more code."
-        );
       } else if (error.status === 401) {
         setRequestError(
           "Your session has expired. Please log in again."
         );
-      } else if (error.status >= 500) {
+      } else if (error.status === 429) {
         setRequestError(
-          "The server encountered an error while processing your request."
+          error.message ||
+            "Execution limit reached. Please wait before running more code."
+        );
+      } else if (error.status === 503) {
+        setRequestError(
+          error.message ||
+            "The code execution service is currently unavailable. Try again shortly."
         );
       } else {
         setRequestError(
@@ -126,12 +145,89 @@ function Developer() {
     }
   }
 
+  function handleEditorKeyDown(event) {
+    if (event.key === "Tab") {
+      event.preventDefault();
+
+      const textarea = event.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+
+      const updatedCode =
+        code.slice(0, start) +
+        "  " +
+        code.slice(end);
+
+      setCode(updatedCode);
+
+      requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(
+          start + 2,
+          start + 2
+        );
+      });
+
+      return;
+    }
+
+    if (
+      event.key === "Enter" &&
+      (event.ctrlKey || event.metaKey)
+    ) {
+      event.preventDefault();
+      handleRunCode();
+    }
+  }
+
+  function handleEditorScroll(event) {
+    if (lineNumbersRef.current) {
+      lineNumbersRef.current.scrollTop =
+        event.currentTarget.scrollTop;
+    }
+  }
+
+  async function handleCopyCode() {
+    try {
+      await navigator.clipboard.writeText(code);
+
+      setCopyFeedback("Copied!");
+
+      if (copyTimerRef.current) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+
+      copyTimerRef.current = window.setTimeout(() => {
+        setCopyFeedback("");
+      }, 1800);
+    } catch {
+      setCopyFeedback("Copy unavailable");
+
+      if (copyTimerRef.current) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+
+      copyTimerRef.current = window.setTimeout(() => {
+        setCopyFeedback("");
+      }, 1800);
+    }
+  }
+
+  function handleResetCode() {
+    if (isRunning) return;
+
+    setCode(DEFAULT_CODE);
+    setExecution(null);
+    setRequestError("");
+  }
+
   function handleClearConsole() {
     setExecution(null);
     setRequestError("");
   }
 
   function handleLogout() {
+    setMobilePanel(false);
     logout();
 
     navigate("/login", {
@@ -143,8 +239,15 @@ function Developer() {
     execution?.status === "ok";
 
   const executionFailed =
-    execution?.status === "error" ||
-    execution?.status === "timeout";
+    execution && execution.status !== "ok";
+
+  const executionStatusLabels = {
+    ok: "Completed",
+    error: "Failed",
+    timeout: "Timed out",
+    memory_limit: "Memory limit",
+    crashed: "Runner crashed",
+  };
 
   return (
     <div className="app developer-app">
@@ -153,18 +256,31 @@ function Developer() {
           Signed in as <strong>{user?.username}</strong>
         </span>
 
-        <button
-          type="button"
-          onClick={handleLogout}
-        >
+        <button type="button" onClick={handleLogout}>
           Log out
         </button>
       </div>
 
-      <Navbar />
+      <Navbar
+        onOpenSidebar={() => setMobilePanel(true)}
+        onOpenRooms={() => setMobilePanel(true)}
+      />
 
       <div className="app-body">
-        <Sidebar />
+        {mobilePanel && (
+          <button
+            type="button"
+            className="mobile-panel-backdrop"
+            aria-label="Close workspace navigation"
+            onClick={() => setMobilePanel(false)}
+          />
+        )}
+
+        <Sidebar
+          isMobileOpen={mobilePanel}
+          onNavigate={() => setMobilePanel(false)}
+          onClose={() => setMobilePanel(false)}
+        />
 
         <main className="developer-workspace">
           <header className="developer-header">
@@ -182,7 +298,7 @@ function Developer() {
             </div>
 
             <div className="developer-language">
-              <span className="language-indicator"></span>
+              <span className="language-indicator" />
               JavaScript
             </div>
           </header>
@@ -205,18 +321,36 @@ function Developer() {
 
                 <button
                   type="button"
+                  className="editor-action-button"
+                  onClick={handleCopyCode}
+                  disabled={!code}
+                >
+                  {copyFeedback || "Copy"}
+                </button>
+
+                <button
+                  type="button"
+                  className="editor-action-button"
+                  onClick={handleResetCode}
+                  disabled={isRunning}
+                >
+                  Reset
+                </button>
+
+                <button
+                  type="button"
                   className="run-code-button"
                   onClick={handleRunCode}
                   disabled={isRunning || !code.trim()}
                 >
                   {isRunning ? (
                     <>
-                      <span className="loading-spinner"></span>
+                      <span className="loading-spinner" />
                       Running...
                     </>
                   ) : (
                     <>
-                      <span>▶</span>
+                      <span aria-hidden="true">▶</span>
                       Run Code
                     </>
                   )}
@@ -225,20 +359,25 @@ function Developer() {
             </div>
 
             <div className="code-editor">
-              <div className="editor-line-numbers">
-                {code.split("\n").map((_, index) => (
-                  <span key={index}>
-                    {index + 1}
-                  </span>
+              <div
+                className="editor-line-numbers"
+                ref={lineNumbersRef}
+                aria-hidden="true"
+              >
+                {lines.map((_, index) => (
+                  <span key={index}>{index + 1}</span>
                 ))}
               </div>
 
               <textarea
+                ref={textareaRef}
                 className="code-textarea"
                 value={code}
                 onChange={(event) =>
                   setCode(event.target.value)
                 }
+                onKeyDown={handleEditorKeyDown}
+                onScroll={handleEditorScroll}
                 placeholder="Write your JavaScript code here..."
                 spellCheck="false"
                 autoCapitalize="off"
@@ -254,6 +393,7 @@ function Developer() {
               <span>JavaScript</span>
               <span>UTF-8</span>
               <span>Spaces: 2</span>
+              <span>Ctrl + Enter to run</span>
             </div>
           </section>
 
@@ -261,7 +401,7 @@ function Developer() {
             <div className="console-header">
               <div className="console-title">
                 <span className="console-icon">›_</span>
-                <h2>Console</h2>
+                <h2>Execution Console</h2>
               </div>
 
               <div className="console-actions">
@@ -273,11 +413,9 @@ function Developer() {
                         : "status-error"
                     }`}
                   >
-                    {executionSucceeded
-                      ? "Completed"
-                      : execution.status === "timeout"
-                        ? "Timed out"
-                        : "Failed"}
+                    {executionStatusLabels[
+                      execution.status
+                    ] || "Execution failed"}
                   </span>
                 )}
 
@@ -285,9 +423,7 @@ function Developer() {
                   type="button"
                   onClick={handleClearConsole}
                   className="clear-console-button"
-                  disabled={
-                    !execution && !requestError
-                  }
+                  disabled={!execution && !requestError}
                 >
                   Clear console
                 </button>
@@ -301,7 +437,7 @@ function Developer() {
             >
               {isRunning && (
                 <div className="console-message">
-                  <span className="loading-spinner"></span>
+                  <span className="loading-spinner" />
                   Executing JavaScript...
                 </div>
               )}
@@ -311,11 +447,13 @@ function Developer() {
                 !requestError && (
                   <div className="console-empty">
                     <span>⌘</span>
+
                     <p>
                       Your execution results will appear here.
                     </p>
+
                     <small>
-                      Click Run Code to execute your JavaScript.
+                      Click Run Code or press Ctrl + Enter.
                     </small>
                   </div>
                 )}
@@ -329,6 +467,33 @@ function Developer() {
 
               {execution && (
                 <>
+                  <div
+                    className={`execution-result-banner ${
+                      executionSucceeded
+                        ? "result-banner-success"
+                        : "result-banner-error"
+                    }`}
+                  >
+                    <strong>
+                      {executionSucceeded
+                        ? "Execution completed successfully"
+                        : execution.status === "timeout"
+                          ? "Execution timed out"
+                          : execution.status === "memory_limit"
+                            ? "Memory limit exceeded"
+                            : execution.status === "crashed"
+                              ? "Code runner crashed"
+                              : "Execution failed"}
+                    </strong>
+
+                    <span>
+                      {executionSucceeded
+                        ? "Your JavaScript code ran successfully."
+                        : execution.error ||
+                          "Check the output below for details."}
+                    </span>
+                  </div>
+
                   {execution.stdout && (
                     <div className="console-section">
                       <div className="console-section-label">
@@ -355,12 +520,7 @@ function Developer() {
 
                   {execution.error && (
                     <div className="console-error">
-                      <strong>
-                        {execution.status === "timeout"
-                          ? "Execution Timeout"
-                          : "Execution Error"}
-                      </strong>
-
+                      <strong>Execution Error</strong>
                       <pre>{execution.error}</pre>
                     </div>
                   )}
