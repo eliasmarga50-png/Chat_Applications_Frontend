@@ -1,18 +1,32 @@
-
 function TypingIndicator({ userCount = 0 }) {
-  if (!userCount) return null;
+  if (userCount <= 0) {
+    return null;
+  }
 
   const label =
     userCount === 1
-      ? "Someone is typing..."
-      : `${userCount} people are typing...`;
+      ? "Someone is typing"
+      : `${userCount} people are typing`;
 
   return (
-    <div className="typing-indicator" aria-live="polite">
-      <span className="typing-dot"></span>
-      <span className="typing-dot"></span>
-      <span className="typing-dot"></span>
-      <span>{label}</span>
+    <div
+      className="typing-indicator"
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+    >
+      <span className="typing-dots" aria-hidden="true">
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+      </span>
+
+      <span className="typing-label">
+        {label}
+        <span className="typing-ellipsis" aria-hidden="true">
+          ...
+        </span>
+      </span>
     </div>
   );
 }
