@@ -126,13 +126,13 @@ export function uploadFile(
     });
 
     xhr.addEventListener("load", () => {
-      let data = null;
-
-      try {
-        data = JSON.parse(xhr.responseText);
-      } catch {
-        data = null;
-      }
+      const data = (() => {
+  try {
+    return JSON.parse(xhr.responseText);
+  } catch {
+    return null;
+  }
+})();
 
       if (xhr.status >= 200 && xhr.status < 300) {
         if (settled) return;
