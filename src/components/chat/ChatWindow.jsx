@@ -285,24 +285,44 @@ function ChatWindow({
             </button>
           </div>
         ) : messages.length > 0 ? (
-          messages.map((message) => {
-            const label = dateLabel(message.createdAt);
-            const showDivider = label !== previousDate;
+          messages.map((message, index) => {
+  const label = dateLabel(message.createdAt);
+  const showDivider = label !== previousDate;
 
-            previousDate = label;
+  const previousMessage = messages[index - 1];
 
-            return (
-              <div key={message.id}>
-                {showDivider && (
-                  <div className="date-divider">
-                    <span>{label}</span>
-                  </div>
-                )}
+  const sameAuthor =
+    previousMessage?.username === message.username;
 
-                <MessageItem message={message} />
-              </div>
-            );
-          })
+  const currentTime = new Date(message.createdAt).getTime();
+  const previousTime = previousMessage
+    ? new Date(previousMessage.createdAt).getTime()
+    : 0;
+
+  const withinFiveMinutes =
+    currentTime >= previousTime &&
+    currentTime - previousTime <= 5 * 60 * 1000;
+
+  const showHeader =
+    !sameAuthor || !withinFiveMinutes || showDivider;
+
+  previousDate = label;
+
+  return (
+    <div key={message.id}>
+      {showDivider && (
+        <div className="date-divider">
+          <span>{label}</span>
+        </div>
+      )}
+
+      <MessageItem
+        message={message}
+        showHeader={showHeader}
+      />
+    </div>
+  );
+})
         ) : (
           <div className="empty-messages">
             <div className="empty-message-icon">#</div>
