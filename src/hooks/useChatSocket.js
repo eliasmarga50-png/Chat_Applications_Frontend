@@ -20,6 +20,7 @@ function useChatSocket(_token, slug, onMessage) {
     socket,
     connectionStatus,
     connectionError,
+    retryConnection,
   } = useSocket();
 
   const { dispatch } = useChat();
@@ -333,6 +334,7 @@ function useChatSocket(_token, slug, onMessage) {
     sendMessage,
     onTypingChange,
     retryRoomJoin,
+    retryConnection,
   };
 }
 
