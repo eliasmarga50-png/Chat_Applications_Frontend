@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import Navbar from "../components/layout/Navbar";
@@ -16,9 +16,10 @@ import NotFound from "./NotFound";
 
 function Chat() {
   const { user, token, logout } = useAuth();
-
   const navigate = useNavigate();
   const { slug } = useParams();
+
+  const [mobilePanel, setMobilePanel] = useState(null);
 
   const {
     rooms,
@@ -27,7 +28,6 @@ function Chat() {
     retry: retryRooms,
   } = useRooms();
 
-  // Redirect /chat to the default room.
   useEffect(() => {
     if (!slug && !roomsLoading && rooms.length > 0) {
       const defaultRoom =
@@ -72,11 +72,7 @@ function Chat() {
     sendMessage,
     onTypingChange,
     retryRoomJoin,
-  } = useChatSocket(
-    token,
-    slug,
-    addRealtimeMessage
-  );
+  } = useChatSocket(token, slug, addRealtimeMessage);
 
   const handleSelectRoom = useCallback(
     (roomId) => {
@@ -86,12 +82,18 @@ function Chat() {
 
       if (selectedRoom) {
         navigate(`/chat/${selectedRoom.slug}`);
+        setMobilePanel(null);
       }
     },
     [rooms, navigate]
   );
 
+  const closeMobilePanel = useCallback(() => {
+    setMobilePanel(null);
+  }, []);
+
   function handleLogout() {
+    setMobilePanel(null);
     logout();
 
     navigate("/login", {
@@ -110,24 +112,41 @@ function Chat() {
           Signed in as <strong>{user?.username}</strong>
         </span>
 
-        <button
-          type="button"
-          onClick={handleLogout}
-        >
+        <button type="button" onClick={handleLogout}>
           Log out
         </button>
       </div>
 
-      <Navbar />
+      <Navbar
+        onOpenSidebar={() => setMobilePanel("sidebar")}
+        onOpenRooms={() => setMobilePanel("rooms")}
+        isSidebarOpen={mobilePanel === "sidebar"}
+        isRoomsOpen={mobilePanel === "rooms"}
+      />
 
       <div className="app-body">
-        <Sidebar />
+        {mobilePanel && (
+          <button
+            type="button"
+            className="mobile-panel-backdrop"
+            aria-label="Close navigation menu"
+            onClick={closeMobilePanel}
+          />
+        )}
+
+        <Sidebar
+          isMobileOpen={mobilePanel === "sidebar"}
+          onNavigate={closeMobilePanel}
+          onClose={closeMobilePanel}
+        />
 
         <RoomList
           loading={roomsLoading}
           error={roomsError}
           onRetry={retryRooms}
           onSelectRoom={handleSelectRoom}
+          isMobileOpen={mobilePanel === "rooms"}
+          onClose={closeMobilePanel}
         />
 
         <ChatWindow

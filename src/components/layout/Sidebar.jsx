@@ -1,24 +1,62 @@
+
 import { NavLink } from "react-router-dom";
 
-function Sidebar() {
+function Sidebar({
+  isMobileOpen = false,
+  onNavigate,
+  onClose,
+}) {
+  const sidebarClass = [
+    "sidebar",
+    isMobileOpen ? "is-mobile-open" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <aside className="sidebar">
+    <aside
+      id="workspace-sidebar"
+      className={sidebarClass}
+      aria-label="Workspace navigation"
+      aria-hidden={!isMobileOpen && undefined}
+    >
+      <div className="mobile-sidebar-header">
+        <span>Workspace</span>
+
+        <button
+          type="button"
+          className="mobile-panel-close"
+          onClick={onClose}
+          aria-label="Close workspace navigation"
+        >
+          ×
+        </button>
+      </div>
+
       <div className="sidebar-section">
-        <p className="sidebar-heading">WORKSPACE</p>
+        <p className="sidebar-heading">
+          WORKSPACE
+        </p>
 
         <nav className="sidebar-nav">
-          <a href="#discover" className="sidebar-link">
-            <span>⌕</span>
+          <a
+            href="#discover"
+            className="sidebar-link"
+            onClick={onNavigate}
+          >
+            <span aria-hidden="true">⌕</span>
             Discover
           </a>
 
           <NavLink
             to="/chat"
+            end
             className={({ isActive }) =>
               `sidebar-link ${isActive ? "active" : ""}`
             }
+            onClick={onNavigate}
           >
-            <span>▤</span>
+            <span aria-hidden="true">▤</span>
             Messages
           </NavLink>
 
@@ -27,8 +65,9 @@ function Sidebar() {
             className={({ isActive }) =>
               `sidebar-link ${isActive ? "active" : ""}`
             }
+            onClick={onNavigate}
           >
-            <span>{"</>"}</span>
+            <span aria-hidden="true">{"</>"}</span>
             Developer Tools
           </NavLink>
 
@@ -37,36 +76,51 @@ function Sidebar() {
             className={({ isActive }) =>
               `sidebar-link ${isActive ? "active" : ""}`
             }
+            onClick={onNavigate}
           >
-            <span>{"</>"}</span>
+            <span aria-hidden="true">{"</>"}</span>
             Developer Uploads
           </NavLink>
 
-          <a href="#saved" className="sidebar-link">
-            <span>☆</span>
+          <a
+            href="#saved"
+            className="sidebar-link"
+            onClick={onNavigate}
+          >
+            <span aria-hidden="true">☆</span>
             Saved messages
           </a>
         </nav>
       </div>
 
       <div className="sidebar-section sidebar-bottom">
-        <p className="sidebar-heading">YOUR ACCOUNT</p>
+        <p className="sidebar-heading">
+          YOUR ACCOUNT
+        </p>
 
         <nav className="sidebar-nav">
-          <a href="#settings" className="sidebar-link">
-            <span>⚙</span>
+          <a
+            href="#settings"
+            className="sidebar-link"
+            onClick={onNavigate}
+          >
+            <span aria-hidden="true">⚙</span>
             Settings
           </a>
 
-          <a href="#help" className="sidebar-link">
-            <span>?</span>
+          <a
+            href="#help"
+            className="sidebar-link"
+            onClick={onNavigate}
+          >
+            <span aria-hidden="true">?</span>
             Help and support
           </a>
         </nav>
       </div>
 
       <div className="sidebar-footer">
-        <div className="online-indicator"></div>
+        <div className="online-indicator" />
         <span>All systems operational</span>
       </div>
     </aside>

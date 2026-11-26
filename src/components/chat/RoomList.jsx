@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useChat } from "../../hooks/useChat";
 
@@ -6,6 +7,8 @@ function RoomList({
   loading,
   error,
   onRetry,
+  isMobileOpen = false,
+  onClose,
 }) {
   const { state } = useChat();
 
@@ -23,26 +26,49 @@ function RoomList({
       .includes(search.trim().toLowerCase())
   );
 
+  const roomListClass = [
+    "room-list",
+    isMobileOpen ? "is-mobile-open" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <section className="room-list">
+    <section
+      id="channel-navigation"
+      className={roomListClass}
+      aria-label="Channel navigation"
+      aria-hidden={!isMobileOpen && undefined}
+    >
       <div className="room-list-header">
         <div>
           <h2>Channels</h2>
           <p>Join the conversation</p>
         </div>
 
-        <button
-          className="add-room-button"
-          type="button"
-          aria-label="Add room"
-          disabled
-        >
-          +
-        </button>
+        <div className="room-header-actions">
+          <button
+            className="add-room-button"
+            type="button"
+            aria-label="Add room"
+            disabled
+          >
+            +
+          </button>
+
+          <button
+            type="button"
+            className="mobile-panel-close"
+            onClick={onClose}
+            aria-label="Close channel navigation"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       <div className="room-search">
-        <span>⌕</span>
+        <span aria-hidden="true">⌕</span>
 
         <input
           type="search"
@@ -84,6 +110,9 @@ function RoomList({
               className={`room-item ${
                 room.id === activeRoomId ? "selected" : ""
               }`}
+              aria-current={
+                room.id === activeRoomId ? "page" : undefined
+              }
               onClick={() => onSelectRoom(room.id)}
             >
               <div className="room-icon">

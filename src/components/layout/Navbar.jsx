@@ -1,7 +1,8 @@
+
 import { useAuth } from "../../context/useAuth";
 import { useChat } from "../../hooks/useChat";
 
-function Navbar() {
+function Navbar({ onOpenSidebar, onOpenRooms }) {
   const { user } = useAuth();
   const { state } = useChat();
 
@@ -20,9 +21,33 @@ function Navbar() {
   return (
     <header className="navbar">
       <div className="navbar-brand">
+        <button
+          type="button"
+          className="mobile-nav-button"
+          onClick={onOpenSidebar}
+          aria-label="Open workspace navigation"
+          aria-controls="workspace-sidebar"
+        >
+          ☰
+        </button>
+
         <div className="brand-icon">D</div>
-        <span className="brand-name">DevConnect</span>
+
+        <span className="brand-name">
+          DevConnect
+        </span>
       </div>
+
+      <button
+        type="button"
+        className="mobile-nav-button mobile-rooms-button"
+        onClick={onOpenRooms}
+        aria-label="Open channels"
+        aria-controls="channel-navigation"
+      >
+        <span aria-hidden="true">#</span>
+        <span>Channels</span>
+      </button>
 
       <div className="navbar-search">
         <span className="search-icon">⌕</span>
