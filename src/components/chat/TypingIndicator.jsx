@@ -1,3 +1,6 @@
+
+import { memo } from "react";
+
 function TypingIndicator({ userCount = 0 }) {
   if (userCount <= 0) {
     return null;
@@ -31,4 +34,4 @@ function TypingIndicator({ userCount = 0 }) {
   );
 }
 
-export default TypingIndicator;
+export default memo(TypingIndicator);
