@@ -679,3 +679,424 @@
     flex-direction: column;
   }
 }
+
+
+/* ==========================================
+   DEVCONNECT
+   DEVELOPER WORKSPACE & UPLOAD UI
+========================================== */
+
+/* EDITOR TOOLBAR */
+
+.editor-toolbar {
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.editor-action-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #354156;
+  border-radius: 6px;
+  background: #202b3c;
+  color: #b8c4d5;
+  font-size: 10px;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.editor-action-button:hover:not(:disabled) {
+  border-color: #8175e9;
+  background: #292747;
+  color: #c6bdff;
+}
+
+.editor-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* CODE EDITOR */
+
+.code-editor {
+  min-width: 0;
+  position: relative;
+  scrollbar-color: #3b4960 #0b111b;
+}
+
+.editor-line-numbers {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.editor-line-numbers span {
+  min-height: 23.4px;
+  line-height: 23.4px;
+}
+
+.code-textarea {
+  display: block;
+  min-width: 0;
+  min-height: 300px;
+  overflow: auto;
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  scrollbar-color: #3b4960 #0b111b;
+  caret-color: #a99cff;
+}
+
+.code-textarea:focus {
+  outline: none;
+}
+
+.code-textarea::selection {
+  background: rgb(129 117 233 / 35%);
+}
+
+.developer-editor-panel:focus-within {
+  border-color: #514a8b;
+}
+
+.editor-footer {
+  flex-wrap: wrap;
+}
+
+/* EXECUTION RESULT FEEDBACK */
+
+.execution-result-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 18px;
+  padding: 13px 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.execution-result-banner span {
+  opacity: 0.85;
+}
+
+.result-banner-success {
+  border-color: #285b49;
+  background: #152d26;
+  color: #75ddb0;
+}
+
+.result-banner-error {
+  border-color: #68404a;
+  background: #2c1b24;
+  color: #f19ba3;
+}
+
+.console-output {
+  max-height: 520px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #3b4960 #0b111b;
+}
+
+.console-output pre {
+  max-width: 100%;
+}
+
+.run-code-button:focus-visible,
+.editor-action-button:focus-visible,
+.clear-console-button:focus-visible {
+  outline: 2px solid #a99cff;
+  outline-offset: 3px;
+}
+
+/* UPLOAD PROGRESS */
+
+.upload-progress-state {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 15px;
+  border: 1px solid #39466a;
+  border-radius: 8px;
+  background: #111b2a;
+}
+
+.upload-progress-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #cbd5e4;
+  font-size: 11px;
+}
+
+.upload-progress-filename {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.upload-progress-heading strong {
+  flex-shrink: 0;
+  color: #b5aaff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-progress-track {
+  width: 100%;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #273247;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    #6559c9,
+    #a096ff
+  );
+  transition: width 0.15s ease;
+}
+
+.upload-progress-state small {
+  color: #8795a9;
+  font-size: 10px;
+}
+
+/* MOBILE WORKSPACE NAVIGATION */
+
+@media (max-width: 760px) {
+  .developer-app .app-body,
+  .developer-tools-body {
+    position: relative;
+  }
+
+  .developer-app .sidebar,
+  .developer-tools-body > .sidebar {
+    display: none;
+  }
+
+  .developer-app .sidebar.is-mobile-open,
+  .developer-tools-body > .sidebar.is-mobile-open {
+    position: fixed;
+    z-index: 1200;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    width: min(285px, 85vw);
+    height: 100dvh;
+    overflow-y: auto;
+    box-shadow: 15px 0 40px rgb(0 0 0 / 35%);
+  }
+
+  .developer-app .mobile-panel-backdrop,
+  .developer-tools-body .mobile-panel-backdrop {
+    position: fixed;
+    z-index: 1100;
+    inset: 0;
+    display: block;
+    border: 0;
+    background: rgb(0 0 0 / 60%);
+    cursor: pointer;
+  }
+
+  .developer-workspace {
+    width: 100%;
+    min-height: calc(100dvh - 110px);
+    padding: 18px 13px;
+  }
+
+  .developer-upload-page {
+    width: 100%;
+    min-width: 0;
+    padding: 20px 13px;
+  }
+}
+
+/* TABLET */
+
+@media (max-width: 1050px) {
+  .developer-workspace {
+    padding: 22px 16px;
+  }
+
+  .editor-toolbar {
+    gap: 8px;
+  }
+
+  .uploads-table th,
+  .uploads-table td {
+    padding: 10px 8px;
+  }
+
+  .upload-row-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* SMALL SCREENS */
+
+@media (max-width: 760px) {
+  .developer-header {
+    align-items: flex-start;
+  }
+
+  .developer-header h1 {
+    font-size: 21px;
+  }
+
+  .developer-panel-header {
+    flex-wrap: wrap;
+    padding: 11px;
+  }
+
+  .editor-toolbar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .code-editor,
+  .code-textarea {
+    min-height: 280px;
+  }
+
+  .console-output {
+    max-height: 420px;
+  }
+
+  .developer-upload-heading {
+    flex-wrap: wrap;
+  }
+
+  .uploads-table-wrapper {
+    max-width: 100%;
+  }
+}
+
+/* MOBILE PHONES */
+
+@media (max-width: 480px) {
+  .developer-header {
+    flex-direction: column;
+  }
+
+  .developer-language {
+    align-self: flex-start;
+  }
+
+  .editor-file {
+    gap: 7px;
+  }
+
+  .file-modified {
+    display: none;
+  }
+
+  .editor-toolbar {
+    gap: 7px;
+  }
+
+  .editor-character-count {
+    width: 100%;
+  }
+
+  .run-code-button {
+    flex: 1;
+  }
+
+  .editor-footer {
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 7px 10px;
+  }
+
+  .console-header {
+    flex-wrap: wrap;
+    padding: 10px;
+  }
+
+  .console-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .execution-result-banner {
+    padding: 10px;
+  }
+
+  .console-output {
+    max-height: 350px;
+    padding: 12px;
+    font-size: 11px;
+  }
+
+  .developer-upload-heading {
+    flex-direction: column;
+  }
+
+  .developer-upload-heading h1 {
+    font-size: 21px;
+  }
+
+  .upload-card,
+  .upload-result-card,
+  .upload-guidance,
+  .uploaded-files-section {
+    padding: 15px;
+  }
+
+  .upload-dropzone {
+    min-height: 220px;
+    padding: 16px 10px;
+  }
+
+  .upload-result-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .uploaded-files-heading {
+    flex-direction: column;
+  }
+
+  .uploads-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .upload-progress-state {
+    padding: 12px;
+  }
+
+  .upload-progress-heading {
+    font-size: 10px;
+  }
+
+  .upload-progress-filename {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ACCESSIBILITY */
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-action-button,
+  .upload-progress-fill {
+    transition: none;
+  }
+
+  .loading-spinner,
+  .upload-spinner {
+    animation: none;
+  }
+}
+
