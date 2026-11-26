@@ -1,21 +1,30 @@
 
 import {
+  lazy,
+  Suspense,
+  useEffect,
+} from "react";
+
+import {
   BrowserRouter,
   Navigate,
   Route,
   Routes,
+  useLocation,
 } from "react-router-dom";
 
 import { useAuth } from "../context/useAuth";
-import DeveloperUploads from "../pages/DeveloperUploads";
-
-import Login from "../pages/Login";
-import Register from "../pages/Register";
-import Chat from "../pages/Chat";
-import Developer from "../pages/Developer";
-import NotFound from "../pages/NotFound";
-
+import ErrorBoundary from "../components/ErrorBoundary";
 import ProtectedRoute from "./ProtectedRoute";
+
+const Login = lazy(() => import("../pages/Login"));
+const Register = lazy(() => import("../pages/Register"));
+const Chat = lazy(() => import("../pages/Chat"));
+const Developer = lazy(() => import("../pages/Developer"));
+const DeveloperUploads = lazy(
+  () => import("../pages/DeveloperUploads")
+);
+const NotFound = lazy(() => import("../pages/NotFound"));
 
 function HomeRedirect() {
   const { isAuthenticated } = useAuth();
@@ -28,31 +37,107 @@ function HomeRedirect() {
   );
 }
 
+function RouteAccessibility() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const routeTitles = [
+      { match: "/login", title: "Log in" },
+      { match: "/register", title: "Create account" },
+      { match: "/chat", title: "Chat" },
+      { match: "/developer/uploads", title: "Developer uploads" },
+      { match: "/developer", title: "JavaScript Playground" },
+    ];
+
+    const current = routeTitles.find(({ match }) =>
+      location.pathname.startsWith(match)
+    );
+
+    document.title = current
+      ? `${current.title} | DevConnect`
+      : "DevConnect";
+
+    const main = document.getElementById("main-content");
+
+    if (main && location.hash === "") {
+      main.setAttribute("tabindex", "-1");
+    }
+  }, [location.pathname, location.hash]);
+
+  return (
+    <div
+      className="visually-hidden"
+      aria-live="polite"
+      aria-atomic="true"
+      key={location.pathname}
+    >
+      {location.pathname.startsWith("/chat")
+        ? "Chat page"
+        : location.pathname.startsWith("/developer/uploads")
+          ? "Developer uploads page"
+          : location.pathname.startsWith("/developer")
+            ? "JavaScript playground page"
+            : location.pathname.startsWith("/register")
+              ? "Registration page"
+              : location.pathname.startsWith("/login")
+                ? "Login page"
+                : "Page changed"}
+    </div>
+  );
+}
+
+function RouteLoadingFallback() {
+  return (
+    <main className="route-loading" aria-live="polite">
+      <span className="loading-spinner" aria-hidden="true" />
+      <p>Loading page...</p>
+    </main>
+  );
+}
+
+function AppRoutes() {
+  return (
+    <>
+      <a className="skip-to-content" href="#main-content">
+        Skip to main content
+      </a>
+
+      <RouteAccessibility />
+
+      <ErrorBoundary>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
+            <Route path="/" element={<HomeRedirect />} />
+
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+
+            <Route element={<ProtectedRoute />}>
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/chat/:slug" element={<Chat />} />
+
+              <Route
+                path="/developer"
+                element={<Developer />}
+              />
+              <Route
+                path="/developer/uploads"
+                element={<DeveloperUploads />}
+              />
+            </Route>
+
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
+    </>
+  );
+}
+
 function AppRouter() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomeRedirect />} />
-
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-
-        <Route element={<ProtectedRoute />}>
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/chat/:slug" element={<Chat />} />
-
-          <Route
-            path="/developer"
-            element={<Developer />}
-          />
-          <Route
-            path="/developer/uploads"
-            element={<DeveloperUploads />}
-         />
-        </Route>
-
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <AppRoutes />
     </BrowserRouter>
   );
 }
