@@ -1,12 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 
 import Navbar from "../components/layout/Navbar";
 import Sidebar from "../components/layout/Sidebar";
 import RoomList from "../components/chat/RoomList";
 import ChatWindow from "../components/chat/ChatWindow";
+import NotificationToast from "../components/chat/NotificationToast";
 
 import { useAuth } from "../context/useAuth";
+import { useSocket } from "../hooks/useSocket";
+
 import { useRooms } from "../hooks/useRooms";
 import { useRoom } from "../hooks/useRoom";
 import { useMessages } from "../hooks/useMessages";
@@ -16,10 +27,14 @@ import NotFound from "./NotFound";
 
 function Chat() {
   const { user, token, logout } = useAuth();
+
+  const { retryConnection } = useSocket();
+
   const navigate = useNavigate();
   const { slug } = useParams();
 
   const [mobilePanel, setMobilePanel] = useState(null);
+  const [notification, setNotification] = useState(null);
 
   const {
     rooms,
@@ -92,6 +107,18 @@ function Chat() {
     setMobilePanel(null);
   }, []);
 
+  const notify = useCallback((type, message) => {
+    setNotification({
+      type,
+      message,
+      id: Date.now(),
+    });
+  }, []);
+
+  const dismissNotification = useCallback(() => {
+    setNotification(null);
+  }, []);
+
   function handleLogout() {
     setMobilePanel(null);
     logout();
@@ -112,7 +139,10 @@ function Chat() {
           Signed in as <strong>{user?.username}</strong>
         </span>
 
-        <button type="button" onClick={handleLogout}>
+        <button
+          type="button"
+          onClick={handleLogout}
+        >
           Log out
         </button>
       </div>
@@ -167,8 +197,15 @@ function Chat() {
           joinedRoomSlug={joinedRoomSlug}
           onRetryRoomJoin={retryRoomJoin}
           onTypingChange={onTypingChange}
+          onRetryConnection={retryConnection}
+          onNotify={notify}
         />
       </div>
+
+      <NotificationToast
+        notification={notification}
+        onDismiss={dismissNotification}
+      />
     </div>
   );
 }
