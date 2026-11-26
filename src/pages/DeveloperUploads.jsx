@@ -1,9 +1,15 @@
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import { useNavigate } from "react-router-dom";
 
 import Navbar from "../components/layout/Navbar";
 import Sidebar from "../components/layout/Sidebar";
+
 import { useAuth } from "../context/useAuth";
 
 import {
@@ -17,11 +23,14 @@ import {
 } from "../services/developerService";
 
 import "./DeveloperUploads.css";
+import "./DeveloperCommit4.css";
 
 const PAGE_SIZE = 10;
 
-function formatFileSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
+function formatFileSize(bytes = 0) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
 
   if (bytes < 1024 * 1024) {
     return `${(bytes / 1024).toFixed(1)} KB`;
@@ -33,7 +42,13 @@ function formatFileSize(bytes) {
 function formatDate(date) {
   if (!date) return "Unknown date";
 
-  return new Date(date).toLocaleString();
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Unknown date";
+  }
+
+  return parsedDate.toLocaleString();
 }
 
 function DeveloperUploads() {
@@ -50,12 +65,19 @@ function DeveloperUploads() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
 
+  const [uploadProgress, setUploadProgress] = useState({
+    percentage: 0,
+    loaded: 0,
+    total: 0,
+  });
+
   const [uploads, setUploads] = useState([]);
   const [loadingUploads, setLoadingUploads] = useState(true);
   const [uploadsError, setUploadsError] = useState("");
   const [managementError, setManagementError] = useState("");
 
   const [page, setPage] = useState(1);
+
   const [pagination, setPagination] = useState({
     page: 1,
     limit: PAGE_SIZE,
@@ -66,6 +88,7 @@ function DeveloperUploads() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [downloadingId, setDownloadingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [mobilePanel, setMobilePanel] = useState(false);
 
   // Load the authenticated user's upload history.
   useEffect(() => {
@@ -82,19 +105,28 @@ function DeveloperUploads() {
           signal: controller.signal,
         });
 
-        setUploads(response.uploads ?? []);
-        setPagination(response.pagination);
+        if (controller.signal.aborted) return;
 
-        if (
-          response.pagination?.totalPages > 0 &&
-          page > response.pagination.totalPages
-        ) {
-          setPage(response.pagination.totalPages);
+        setUploads(response?.uploads ?? []);
+
+        if (response?.pagination) {
+          setPagination(response.pagination);
+
+          if (
+            response.pagination.totalPages > 0 &&
+            page > response.pagination.totalPages
+          ) {
+            setPage(response.pagination.totalPages);
+          }
         }
       } catch (error) {
-        if (error.name !== "AbortError") {
+        if (
+          error.name !== "AbortError" &&
+          !controller.signal.aborted
+        ) {
           setUploadsError(
-            error.message || "Could not load uploaded files."
+            error.message ||
+              "Could not load uploaded files."
           );
         }
       } finally {
@@ -119,8 +151,20 @@ function DeveloperUploads() {
   }, []);
 
   function handleLogout() {
+    setMobilePanel(false);
     logout();
-    navigate("/login", { replace: true });
+
+    navigate("/login", {
+      replace: true,
+    });
+  }
+
+  function resetUploadProgress(fileSize = 0) {
+    setUploadProgress({
+      percentage: 0,
+      loaded: 0,
+      total: fileSize,
+    });
   }
 
   function selectFile(file) {
@@ -129,9 +173,12 @@ function DeveloperUploads() {
     const error = validateUploadFile(file);
 
     setUploadError("");
+    setManagementError("");
     setUploadedFile(null);
     setValidationError(error);
     setSelectedFile(error ? null : file);
+
+    resetUploadProgress(error ? 0 : file.size);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -152,7 +199,12 @@ function DeveloperUploads() {
 
   function handleDragLeave(event) {
     event.preventDefault();
-    setIsDragging(false);
+
+    if (
+      !event.currentTarget.contains(event.relatedTarget)
+    ) {
+      setIsDragging(false);
+    }
   }
 
   function handleDrop(event) {
@@ -168,21 +220,43 @@ function DeveloperUploads() {
     if (!selectedFile || isUploading) return;
 
     const controller = new AbortController();
+
     abortControllerRef.current = controller;
 
     setIsUploading(true);
     setUploadError("");
     setManagementError("");
 
+    resetUploadProgress(selectedFile.size);
+
     try {
       const response = await uploadFile(selectedFile, {
         signal: controller.signal,
+
+        onProgress: (progress) => {
+          setUploadProgress(progress);
+        },
       });
 
-      setUploadedFile(response.upload ?? null);
-      setSelectedFile(null);
+      const savedUpload = response?.upload;
 
-      // Refresh the history so the new upload appears.
+      if (!savedUpload) {
+        throw new Error(
+          "The server did not return the uploaded file details."
+        );
+      }
+
+      setUploadProgress({
+        percentage: 100,
+        loaded: selectedFile.size,
+        total: selectedFile.size,
+      });
+
+      setUploadedFile(savedUpload);
+      setSelectedFile(null);
+      setValidationError("");
+
+      // Refresh upload history after successful upload.
       setPage(1);
       setRefreshKey((current) => current + 1);
     } catch (error) {
@@ -193,7 +267,9 @@ function DeveloperUploads() {
           "The server rejected the file because it exceeds 100 MB."
         );
       } else if (error.status === 415) {
-        setUploadError("The server does not support this file type.");
+        setUploadError(
+          "The server does not support this file type."
+        );
       } else if (error.status === 429) {
         setUploadError(
           "Too many requests. Please wait before uploading again."
@@ -204,7 +280,8 @@ function DeveloperUploads() {
         );
       } else {
         setUploadError(
-          error.message || "The file could not be uploaded."
+          error.message ||
+            "The file could not be uploaded."
         );
       }
     } finally {
@@ -224,10 +301,14 @@ function DeveloperUploads() {
     setValidationError("");
     setUploadError("");
     setUploadedFile(null);
+
+    resetUploadProgress();
   }
 
   async function handleDownload(upload) {
-    if (downloadingId) return;
+    if (downloadingId !== null || deletingId !== null) {
+      return;
+    }
 
     setDownloadingId(upload.id);
     setManagementError("");
@@ -244,7 +325,9 @@ function DeveloperUploads() {
   }
 
   async function handleDelete(upload) {
-    if (deletingId || downloadingId) return;
+    if (deletingId !== null || downloadingId !== null) {
+      return;
+    }
 
     const confirmed = window.confirm(
       `Are you sure you want to delete "${upload.originalName}"? This cannot be undone.`
@@ -265,7 +348,8 @@ function DeveloperUploads() {
       setRefreshKey((current) => current + 1);
     } catch (error) {
       setManagementError(
-        error.message || "The file could not be deleted."
+        error.message ||
+          "The file could not be deleted."
       );
     } finally {
       setDeletingId(null);
@@ -282,9 +366,17 @@ function DeveloperUploads() {
 
   function handleNextPage() {
     setPage((current) =>
-      Math.min(pagination.totalPages, current + 1)
+      Math.min(
+        pagination.totalPages,
+        current + 1
+      )
     );
   }
+
+  const totalPages = Math.max(
+    pagination.totalPages,
+    1
+  );
 
   return (
     <div className="app">
@@ -298,10 +390,26 @@ function DeveloperUploads() {
         </button>
       </div>
 
-      <Navbar />
+      <Navbar
+        onOpenSidebar={() => setMobilePanel(true)}
+        onOpenRooms={() => setMobilePanel(true)}
+      />
 
       <div className="app-body developer-tools-body">
-        <Sidebar />
+        {mobilePanel && (
+          <button
+            type="button"
+            className="mobile-panel-backdrop"
+            aria-label="Close workspace navigation"
+            onClick={() => setMobilePanel(false)}
+          />
+        )}
+
+        <Sidebar
+          isMobileOpen={mobilePanel}
+          onNavigate={() => setMobilePanel(false)}
+          onClose={() => setMobilePanel(false)}
+        />
 
         <main className="developer-upload-page">
           <header className="developer-upload-heading">
@@ -323,7 +431,6 @@ function DeveloperUploads() {
             </span>
           </header>
 
-          {/* Upload section */}
           <section className="upload-card">
             <div className="upload-card-heading">
               <div>
@@ -338,26 +445,37 @@ function DeveloperUploads() {
 
             <div
               className={`upload-dropzone ${
-                isDragging ? "upload-dropzone-active" : ""
+                isDragging
+                  ? "upload-dropzone-active"
+                  : ""
               } ${
-                isUploading ? "upload-dropzone-disabled" : ""
+                isUploading
+                  ? "upload-dropzone-disabled"
+                  : ""
               }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              <div className="upload-cloud-icon" aria-hidden="true">
+              <div
+                className="upload-cloud-icon"
+                aria-hidden="true"
+              >
                 ↑
               </div>
 
               <h3>Drag and drop your file here</h3>
 
-              <p>or select a file from your computer</p>
+              <p>
+                or select a file from your computer
+              </p>
 
               <button
                 type="button"
                 className="choose-file-button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() =>
+                  fileInputRef.current?.click()
+                }
                 disabled={isUploading}
               >
                 Choose file
@@ -374,7 +492,8 @@ function DeveloperUploads() {
               />
 
               <small>
-                Supported: {ACCEPTED_FILE_EXTENSIONS.join(", ")}
+                Supported:{" "}
+                {ACCEPTED_FILE_EXTENSIONS.join(", ")}
               </small>
             </div>
 
@@ -398,7 +517,8 @@ function DeveloperUploads() {
                     <strong>{selectedFile.name}</strong>
 
                     <span>
-                      {formatFileSize(selectedFile.size)} ·{" "}
+                      {formatFileSize(selectedFile.size)}
+                      {" · "}
                       {selectedFile.type ||
                         "MIME type determined from extension"}
                     </span>
@@ -453,27 +573,51 @@ function DeveloperUploads() {
                 role="status"
                 aria-live="polite"
               >
-                <span className="upload-spinner" />
+                <div className="upload-progress-heading">
+                  <span className="upload-progress-filename">
+                    Uploading {selectedFile?.name}
+                  </span>
 
-                <span>
-                  Uploading {selectedFile?.name}…
-                </span>
+                  <strong>
+                    {uploadProgress.percentage}%
+                  </strong>
+                </div>
+
+                <div
+                  className="upload-progress-track"
+                  role="progressbar"
+                  aria-label="File upload progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={uploadProgress.percentage}
+                >
+                  <div
+                    className="upload-progress-fill"
+                    style={{
+                      width: `${uploadProgress.percentage}%`,
+                    }}
+                  />
+                </div>
 
                 <small>
-                  Sending the original file bytes to the server.
+                  {formatFileSize(uploadProgress.loaded)}
+                  {" of "}
+                  {formatFileSize(uploadProgress.total)}
+                  {" uploaded"}
                 </small>
               </div>
             )}
           </section>
 
-          {/* Latest upload result */}
           {uploadedFile && (
             <section
               className="upload-result-card"
               aria-live="polite"
             >
               <div className="upload-result-heading">
-                <span className="upload-success-icon">✓</span>
+                <span className="upload-success-icon">
+                  ✓
+                </span>
 
                 <div>
                   <h2>Upload completed</h2>
@@ -496,7 +640,9 @@ function DeveloperUploads() {
 
                 <div>
                   <dt>File size</dt>
-                  <dd>{formatFileSize(uploadedFile.size)}</dd>
+                  <dd>
+                    {formatFileSize(uploadedFile.size)}
+                  </dd>
                 </div>
 
                 <div>
@@ -513,13 +659,14 @@ function DeveloperUploads() {
 
                 <div>
                   <dt>Uploaded</dt>
-                  <dd>{formatDate(uploadedFile.createdAt)}</dd>
+                  <dd>
+                    {formatDate(uploadedFile.createdAt)}
+                  </dd>
                 </div>
               </dl>
             </section>
           )}
 
-          {/* Uploaded files management */}
           <section className="uploaded-files-section">
             <div className="uploaded-files-heading">
               <div>
@@ -566,7 +713,9 @@ function DeveloperUploads() {
               </div>
             ) : uploads.length === 0 ? (
               <div className="uploads-empty-state">
-                <span className="uploads-empty-icon">▤</span>
+                <span className="uploads-empty-icon">
+                  ▤
+                </span>
 
                 <h3>No uploaded files yet</h3>
 
@@ -597,15 +746,21 @@ function DeveloperUploads() {
                                 FILE
                               </span>
 
-                              <span>{upload.originalName}</span>
+                              <span>
+                                {upload.originalName}
+                              </span>
                             </div>
                           </td>
 
                           <td>{upload.mimeType}</td>
 
-                          <td>{formatFileSize(upload.size)}</td>
+                          <td>
+                            {formatFileSize(upload.size)}
+                          </td>
 
-                          <td>{formatDate(upload.createdAt)}</td>
+                          <td>
+                            {formatDate(upload.createdAt)}
+                          </td>
 
                           <td>
                             <div className="upload-row-actions">
@@ -653,8 +808,8 @@ function DeveloperUploads() {
                     {pagination.total} total file
                     {pagination.total === 1 ? "" : "s"}
                     {" · "}
-                    Page {pagination.page} of{" "}
-                    {Math.max(pagination.totalPages, 1)}
+                    Page {pagination.page || page} of{" "}
+                    {totalPages}
                   </span>
 
                   <div>
