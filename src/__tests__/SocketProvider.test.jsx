@@ -1,6 +1,19 @@
 
-import { act, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { AuthContext } from "../context/AuthContext";
 import { SocketProvider } from "../context/SocketProvider";
@@ -20,9 +33,11 @@ function createFakeSocket() {
     on: vi.fn((event, callback) => {
       managerListeners.set(event, callback);
     }),
+
     off: vi.fn((event) => {
       managerListeners.delete(event);
     }),
+
     trigger(event, ...args) {
       managerListeners.get(event)?.(...args);
     },
@@ -33,6 +48,7 @@ function createFakeSocket() {
     connected: false,
     active: true,
     auth: {},
+
     io: manager,
 
     on: vi.fn((event, callback) => {
@@ -67,12 +83,21 @@ function SocketStatus() {
 
   return (
     <div>
-      <p data-testid="status">{connectionStatus}</p>
+      <p data-testid="status">
+        {connectionStatus}
+      </p>
+
       <p data-testid="socket">
         {socket ? "Socket available" : "No socket"}
       </p>
-      <p data-testid="error">{connectionError || "No error"}</p>
-      <button onClick={retryConnection}>Retry connection</button>
+
+      <p data-testid="error">
+        {connectionError || "No error"}
+      </p>
+
+      <button onClick={retryConnection}>
+        Retry connection
+      </button>
     </div>
   );
 }
@@ -92,8 +117,14 @@ describe("SocketProvider", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
     fakeSocket = createFakeSocket();
-    createSocket.mockReturnValue(fakeSocket);
+
+    createSocket.mockImplementation((token) => {
+      fakeSocket.auth = { token };
+
+      return fakeSocket;
+    });
   });
 
   afterEach(() => {
@@ -107,9 +138,11 @@ describe("SocketProvider", () => {
     });
 
     expect(createSocket).not.toHaveBeenCalled();
+
     expect(screen.getByTestId("status")).toHaveTextContent(
       "disconnected"
     );
+
     expect(screen.getByTestId("socket")).toHaveTextContent(
       "No socket"
     );
@@ -122,9 +155,15 @@ describe("SocketProvider", () => {
     });
 
     expect(createSocket).toHaveBeenCalledWith("valid-jwt");
+
     expect(fakeSocket.connect).toHaveBeenCalledOnce();
+
     expect(screen.getByTestId("status")).toHaveTextContent(
       "connecting"
+    );
+
+    expect(screen.getByTestId("socket")).toHaveTextContent(
+      "No socket"
     );
   });
 
@@ -142,9 +181,11 @@ describe("SocketProvider", () => {
     expect(screen.getByTestId("status")).toHaveTextContent(
       "connected"
     );
+
     expect(screen.getByTestId("socket")).toHaveTextContent(
       "Socket available"
     );
+
     expect(screen.getByTestId("error")).toHaveTextContent(
       "No error"
     );
@@ -169,8 +210,37 @@ describe("SocketProvider", () => {
     expect(screen.getByTestId("status")).toHaveTextContent(
       "reconnecting"
     );
+
     expect(screen.getByTestId("error")).toHaveTextContent(
       "Connection lost. Reconnecting..."
+    );
+  });
+
+  it("sets disconnected status when the server disconnects the socket", () => {
+    renderSocketProvider({
+      token: "valid-jwt",
+      isAuthenticated: true,
+    });
+
+    act(() => {
+      fakeSocket.connected = true;
+      fakeSocket.trigger("connect");
+    });
+
+    act(() => {
+      fakeSocket.active = false;
+      fakeSocket.trigger(
+        "disconnect",
+        "io server disconnect"
+      );
+    });
+
+    expect(screen.getByTestId("status")).toHaveTextContent(
+      "disconnected"
+    );
+
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "The server disconnected your session."
     );
   });
 
@@ -187,8 +257,79 @@ describe("SocketProvider", () => {
     expect(screen.getByTestId("status")).toHaveTextContent(
       "reconnecting"
     );
+
     expect(screen.getByTestId("error")).toHaveTextContent(
       "Connection lost. Reconnecting..."
+    );
+  });
+
+  it("handles reconnection errors", () => {
+    renderSocketProvider({
+      token: "valid-jwt",
+      isAuthenticated: true,
+    });
+
+    act(() => {
+      fakeSocket.io.trigger(
+        "reconnect_error",
+        new Error("Reconnection failed")
+      );
+    });
+
+    expect(screen.getByTestId("status")).toHaveTextContent(
+      "reconnecting"
+    );
+
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "Reconnection failed"
+    );
+  });
+
+  it("handles connection errors while the socket is active", () => {
+    renderSocketProvider({
+      token: "valid-jwt",
+      isAuthenticated: true,
+    });
+
+    act(() => {
+      fakeSocket.active = true;
+
+      fakeSocket.trigger(
+        "connect_error",
+        new Error("Connection refused")
+      );
+    });
+
+    expect(screen.getByTestId("status")).toHaveTextContent(
+      "reconnecting"
+    );
+
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "Unable to connect. Retrying..."
+    );
+  });
+
+  it("handles connection errors when the socket is inactive", () => {
+    renderSocketProvider({
+      token: "valid-jwt",
+      isAuthenticated: true,
+    });
+
+    act(() => {
+      fakeSocket.active = false;
+
+      fakeSocket.trigger(
+        "connect_error",
+        new Error("Authentication failed")
+      );
+    });
+
+    expect(screen.getByTestId("status")).toHaveTextContent(
+      "error"
+    );
+
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "Authentication failed"
     );
   });
 
@@ -199,6 +340,7 @@ describe("SocketProvider", () => {
     });
 
     act(() => {
+      fakeSocket.connected = true;
       fakeSocket.trigger("connect");
     });
 
@@ -206,13 +348,20 @@ describe("SocketProvider", () => {
       fakeSocket.connected = false;
     });
 
-    screen.getByRole("button", {
-      name: "Retry connection",
-    }).click();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Retry connection",
+      })
+    );
 
     expect(fakeSocket.connect).toHaveBeenCalledTimes(2);
+
     expect(screen.getByTestId("status")).toHaveTextContent(
       "connecting"
+    );
+
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "No error"
     );
   });
 
@@ -236,7 +385,7 @@ describe("SocketProvider", () => {
       })
     );
 
-    expect(fakeSocket.disconnect).toHaveBeenCalled();
+    expect(fakeSocket.disconnect).toHaveBeenCalledOnce();
   });
 
   it("removes socket listeners and disconnects when the provider unmounts", () => {
@@ -251,14 +400,17 @@ describe("SocketProvider", () => {
       "connect",
       expect.any(Function)
     );
+
     expect(fakeSocket.off).toHaveBeenCalledWith(
       "disconnect",
       expect.any(Function)
     );
+
     expect(fakeSocket.off).toHaveBeenCalledWith(
       "connect_error",
       expect.any(Function)
     );
+
     expect(fakeSocket.off).toHaveBeenCalledWith(
       "auth:expired",
       expect.any(Function)
@@ -274,6 +426,6 @@ describe("SocketProvider", () => {
       expect.any(Function)
     );
 
-    expect(fakeSocket.disconnect).toHaveBeenCalled();
+    expect(fakeSocket.disconnect).toHaveBeenCalledOnce();
   });
 });
